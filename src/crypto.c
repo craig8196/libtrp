@@ -23,6 +23,11 @@ typedef struct _trip_nonce_s
 trip_signature_t *
 trip_signature_new(trip_memory_t *m)
 {
+    if (!m)
+    {
+        m = trip_memory_default();
+    }
+
     _trip_signature_t *sig = m->alloc(m->ud, sizeof(_trip_signature_t));
 
     if (sig)
@@ -47,6 +52,11 @@ trip_signature_free(trip_memory_t *m, trip_signature_t *sig)
 trip_keypair_t *
 trip_keypair_new(trip_memory_t *m)
 {
+    if (!m)
+    {
+        m = trip_memory_default();
+    }
+
     _trip_keypair_t *pair = m->alloc(m->ud, sizeof(_trip_keypair_t));
 
     if (pair)

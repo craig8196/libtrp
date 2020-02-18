@@ -12,14 +12,14 @@ main()
     trip_router_setopt(server, TRIPOPT_KEYPAIR, pair);
     trip_router_setopt(server, TRIPOPT_SIGNATURE, sig);
 
-
+    /*
     int c;
     while (0 == (c = trip_router_perform(server)))
     {
-        c  = trip_router_watch(server, 1000);
+        c = trip_router_watch(server, 1000);
         if (0 != c)
         {
-            printf("Error: %d\n", c);
+            printf("Error (%d): %s\n", c, trip_router_errmsg(server));
             break;
         }
     }
@@ -27,7 +27,7 @@ main()
     trip_router_free(server);
     trip_keypair_free(NULL, pair);
     trip_signature_free(NULL, sig);
-
+    */
 
     return 0;
 }

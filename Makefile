@@ -15,6 +15,7 @@ CC = gcc
 CFLAGS = -Wall -Wextra -Werror -pedantic -msse2 -g $(DEBUG) $(OPS) $(PROF)
 IFLAGS = -I$(IDIR)
 LIBS = -lsodium
+STATIC = $(LDIR)/libtrp.a
 
 PROF =
 ifdef prof
@@ -113,10 +114,9 @@ check:
 	@echo "END CLANG/SCAN-BUILD"
 
 .PHONY: test
-test: $(OBJS)
-	$(CC) $(CFLAGS) $(IFLAGS) $(DEFINES) $(LIBS) $^ $(TDIR)/$(TESTFILE).c -o $(TDIR)/$(TESTFILE).o
+test: all
+	$(CC) $(CFLAGS) $(IFLAGS) $(DEFINES) -o $(TDIR)/$(TESTFILE).o $(TDIR)/$(TESTFILE).c $(STATIC) $(LIBS)
 	@echo "START TEST: $(TESTFILE)"
-#	@$(TDIR)/$(TESTFILE).o > tmp.txt
 	@$(TDIR)/$(TESTFILE).o && echo "PASSED" || echo "FAILED"
 ifdef prof
 ifeq ($(prof), coverage)

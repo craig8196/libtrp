@@ -130,16 +130,19 @@ enum trip_router_opt
     TRIPOPT_TIMEOUT,
 };
 
+const char *
+trip_router_errmsg(trip_router_t *_r);
+int
+trip_router_setopt(trip_router_t *r, enum trip_router_opt opt, void *v);
 trip_router_t *
 trip_router_new_preset(enum trip_preset preset, trip_memory_t *m, trip_packet_t *p);
-int
-trip_router_setopt(trip_router_t *r, enum trip_router_opt opt, ...);
 int
 trip_router_perform(trip_router_t *r);
 int
 trip_router_watch(trip_router_t *r, uint32_t timeout);
 //trip_connection_t *
 //trip_router_mk_connection(trip_router_t *r, const char *info, void *, trip_connection_stream_cb_t cb);
+//trip_router_open_connection(trip_router_t *r, const char *info, void *, trip_connection_stream_cb_t cb);
 int
 trip_router_stop(trip_router_t *r);
 void

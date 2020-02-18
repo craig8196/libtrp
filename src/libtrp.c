@@ -19,7 +19,7 @@ enum _tripr_state
 
 typedef struct _trip_router_s
 {
-    int state;
+    enum _tripr_state state;
     int error;
     char *errmsg;
     trip_memory_t *mem;
@@ -42,6 +42,53 @@ typedef struct _trip_router_s
     trip_screen_t *screen;
 } _trip_router_t;
 
+
+const char *
+trip_router_errmsg(trip_router_t *_r)
+{
+    _trip_router_t *r = (_trip_router_t *)_r;
+    return r->errmsg ? r->errmsg : "";
+}
+
+int
+trip_router_setopt(trip_router_t *_r, enum trip_router_opt opt, void *v) 
+{
+    int rval = 0;
+    _trip_router_t *r = (_trip_router_t *)_r;
+
+    switch (opt)
+    {
+        case TRIPOPT_KEYPAIR:
+            {
+                if (!v)
+                {
+                    rval = EINVAL;
+                }
+                else
+                {
+                    r->sig = v;
+                }
+            }
+            break;
+        case TRIPOPT_SIGNATURE:
+            {
+                if (!v)
+                {
+                    rval = EINVAL;
+                }
+                else
+                {
+                    r->sig = v;
+                }
+            }
+            break;
+        default:
+            rval = EINVAL;
+            break;
+    }
+
+    return rval;
+}
 
 trip_router_t *
 trip_router_new_preset(enum trip_preset preset, trip_memory_t *m, trip_packet_t *p)
@@ -94,6 +141,8 @@ trip_router_perform(trip_router_t *_r)
 
     switch (r->state)
     {
+        case _TRIPR_STATE_START:
+            break;
         case _TRIPR_STATE_BIND:
             break;
 
