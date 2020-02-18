@@ -53,3 +53,13 @@ dkms.conf
 
 # Vim temporary files
 *.swp
+
+# Generated content
+out/
+*.txt
+main_coverage.info
+tags
+test/*.hpp
+*.gcda
+*.gcno
+
