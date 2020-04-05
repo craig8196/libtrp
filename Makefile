@@ -12,10 +12,11 @@ LDIR = ./lib
 
 AR = ar
 CC = gcc
-CFLAGS = -Wall -Wextra -Werror -pedantic -msse2 -g $(DEBUG) $(OPS) $(PROF)
+CFLAGS = -Wall -Wextra -Werror -pedantic -msse2 -fPIC -g $(DEBUG) $(OPS) $(PROF)
 IFLAGS = -I$(IDIR)
 LIBS = -lsodium
-STATIC = $(LDIR)/libtrp.a
+#STATIC = $(LDIR)/libtrp.a
+DYNAMIC = $(LDIR)/libtrp.so
 
 PROF =
 ifdef prof
@@ -40,10 +41,8 @@ ifdef target
 ifneq ($(strip $(target)),)
 TESTFILE =$(target)
 endif
-ifeq ($(strip $(target)), nospace)
-DEFINES += -DTEST_HASHMAP_NOSPACE
 endif
-endif
+
 
 ifdef debug
 DEFINES += -DDEBUG
@@ -51,18 +50,6 @@ endif
 
 ifdef invariant
 DEFINES += -DINVARIANT
-endif
-
-ifdef reserve
-DEFINES += -DALLOW_RESERVE
-endif
-
-ifdef switch
-ifneq ($(strip $(switch)),)
-DEFINES += -D$(switch)
-endif
-else
-#DEFINES += -DHASHMAP
 endif
 
 ifdef compiler
@@ -75,24 +62,13 @@ ifdef inline
 CFLAGS += -finline-functions
 endif
 
-ifndef seed
-seed =
-endif
-ifdef seed
-ifneq ($(strip $(seed)),)
-DEFINES += -DFORCESEED=$(seed)
-else
-DEFINES += -DFORCESEED=0
-endif
-endif
-
 SRC = $(wildcard $(SDIR)/*.c)
 OBJS = $(patsubst $(SDIR)/%.c, $(ODIR)/%.o, $(SRC))
 
 
 all: $(OBJS)
-	ar rcs $(LDIR)/libtrp.a $(OBJS)
-	$(CC) $(CFLAGS) $(IFLAGS) $(DEFINES) $(LIBS) -shared -o $(LDIR)/libtrp.so $(OBJS)
+#	ar rcs $(STATIC) $(OBJS)
+	$(CC) $(CFLAGS) $(IFLAGS) $(DEFINES) $(LIBS) -shared -o $(DYNAMIC) $(OBJS)
 
 .PHONY: dirs
 dirs:
@@ -107,7 +83,7 @@ $(TDIR)/%.o: $(TDIR)/%.c
 .PHONY: check
 check:
 	@echo "START CPPCHECK"
-	cppcheck --enable=warning,style,performance,portability,information -I $(IDIR) $(SRC)
+	cppcheck --enable=warning,style,performance,portability,information --suppress=missingIncludeSystem -I $(IDIR) $(SRC)
 	@echo "END CPPCHECK"
 	@echo "START CLANG/SCAN-BUILD"
 	scan-build make
@@ -115,12 +91,12 @@ check:
 
 .PHONY: test
 test: all
-	$(CC) $(CFLAGS) $(IFLAGS) $(DEFINES) -o $(TDIR)/$(TESTFILE).o $(TDIR)/$(TESTFILE).c $(STATIC) $(LIBS)
+	$(CC) $(CFLAGS) $(IFLAGS) $(DEFINES) -o $(TDIR)/$(TESTFILE).o $(TDIR)/$(TESTFILE).c $(DYNAMIC) $(LIBS)
 	@echo "START TEST: $(TESTFILE)"
 	@$(TDIR)/$(TESTFILE).o && echo "PASSED" || echo "FAILED"
 ifdef prof
 ifeq ($(prof), coverage)
-	@gcov -m hashmap.c
+	@gcov -m $(SRC)
 	@lcov --capture --directory obj --output-file main_coverage.info
 	@genhtml main_coverage.info --output-directory out
 endif

@@ -34,29 +34,35 @@ extern "C" {
 #include <stdint.h>
 #include <stdlib.h>
 
+#include <sodium.h>
+
 
 /* TRiP Forward-Declared Handles */
-typedef struct trip_router_handle{int x;} trip_router_t;
-//typedef struct trip_packet_handle{} trip_pkt_t;
-//typedef struct trip_connection_handle{} TRIPC;
-//typedef struct trip_stream_handle{} TRIPS;
+typedef struct trip_router_handle_s     { void *ud;}
+        trip_router_t;
+typedef struct trip_connection_handle_s { void *ud; }
+        trip_connection_t;
+typedef struct trip_stream_handle_s     { void *ud; }
+        trip_stream_t;
+typedef struct trip_buffer_handle_s     { char _hidden; }
+        tripbuf_t;
 
 
 /* TRiP Global Init/Destroy */
-//int
-//trip_global_init(void);
-//void
-//trip_global_destroy(void);
+int
+trip_global_init(void);
+void
+trip_global_destroy(void);
 
 
-/* TRiP Synchronous Operation */
-//int
-//trip_router_perform(TRIPR *r);
+/* TRiP Time */
+uint64_t
+triptime_now(void);
+uint64_t
+triptime_deadline(int);
+int
+triptime_timeout(uint64_t, uint64_t);
 
-
-/* TRiP Asynchronous Hooks */
-//typedef int trip_async_socket_cb(void *ud, TRIPR *r, trip_socket_t s, int what);
-//typedef int trip_async_timeout_cb(void *ud, TRIPR *r, long timeout_ms);
 
 /* TRiP Memory Interface */
 typedef void *trip_memory_alloc_t(void *, size_t);
@@ -75,110 +81,161 @@ trip_memory_t *
 trip_memory_default(void);
 
 
-/* TRiP Cryptography */
-typedef struct trip_signature_handle{bool x;} trip_signature_t;
-typedef struct trip_keypair_handle{bool x;} trip_keypair_t;
+/* TRiP Buffers */
+size_t
+tripbuf_len(tripbuf_t *);
+size_t
+tripbuf_cap(tripbuf_t *);
+void *
+tripbuf(tripbuf_t *);
 
-trip_signature_t *
-trip_signature_new(trip_memory_t *m);
-void
-trip_signature_free(trip_memory_t *m, trip_signature_t *);
 
-trip_keypair_t *
-trip_keypair_new(trip_memory_t *m);
-void
-trip_keypair_free(trip_memory_t *m, trip_keypair_t *);
+/* TRiP Cryptography for User */
+#define TRIP_SIGN_PUB (crypto_sign_PUBLICKEYBYTES)
+#define TRIP_SIGN_SEC (crypto_sign_SECRETKEYBYTES)
+#define TRIP_KP_PUB (crypto_box_PUBLICKEYBYTES)
+#define TRIP_KP_SEC (crypto_box_SECRETKEYBYTES)
+#define trip_sign_kp crypto_sign_keypair
+#define trip_kp crypto_box_keypair
+
+
+/* TRiP Socket Abstraction */
+typedef int trip_socket_t;
+#define TRIP_SOCKET_TIMEOUT (-1)
 
 
 /* TRiP Packet Interface */
-typedef void trip_packet_bind_cb_t(void *, int);
-typedef void trip_packet_bind_t(void *, void *, trip_packet_bind_cb_t);
-typedef void trip_packet_resolve_cb_t(void *, int);
-typedef void trip_packet_resolve_t(void *, void *, void *, trip_packet_resolve_cb_t);
-typedef int trip_packet_send_t(void *, uint8_t *, size_t);
+typedef void trip_packet_bind_t(void *);
+typedef void trip_packet_resolve_t(void *, trip_connection_t *);
+typedef int trip_packet_send_t(void *, tripbuf_t *);
+typedef int trip_packet_read_t(void *, trip_socket_t fd, int events, int max);
 typedef int trip_packet_unbind_t(void *);
+typedef int trip_packet_wait_t(void *);
+
 
 typedef struct trip_packet_s
 {
-    bool reliable;
-    int fd;
     void *ud;
+    int *fds;
+    int *fde;
+    size_t fdlen;
+    trip_memory_t *mem;
     trip_packet_bind_t *bind;
     trip_packet_resolve_t *resolve;
     trip_packet_send_t *send;
+    trip_packet_read_t *read;
     trip_packet_unbind_t *unbind;
+    trip_packet_wait_t *wait;
+    /* Filled out by router if not by you. */
+    trip_router_t *router;
 } trip_packet_t;
 
 trip_packet_t *
-trip_packet_new_udp(trip_memory_t *m, const char *info);
+trip_packet_new_udp(trip_memory_t *m, const unsigned char *info);
 void
 trip_packet_free_udp(trip_packet_t *);
 
+enum trip_socket_event
+{
+    TRIP_SOCK_EVENT_REMOVE  = 0,
+    TRIP_SOCK_EVENT_IN      = 1,
+    TRIP_SOCK_EVENT_OUT     = 2,
+    TRIP_SOCK_EVENT_INOUT   = 3,
+    TRIP_SOCK_EVENT_ADD     = 4,
+};
+
+
+/* TRiP Packet to Router Communication */
+void
+trip_seg(trip_router_t *r, int src, size_t len, void *buf);
+void
+trip_ready(trip_router_t *r);
+void
+trip_resolve(trip_router_t *r, trip_connection_t *c, int err);
+void
+trip_watch(trip_router_t *r, trip_socket_t fd, int events);
+void
+trip_timeout(trip_router_t *r, int timeoutms);
+void
+trip_unready(trip_router_t *r, int err);
+
 
 /* TRiP Router Interface */
-typedef int trip_screen_t(void *ud);
+typedef void trip_handle_watch_t(trip_router_t *, trip_socket_t, int);
+typedef void trip_handle_timeout_t(trip_router_t *, int);
+
+typedef void trip_handle_screen_t(void *);
+typedef void trip_handle_connection_t(void *, trip_connection_t *);
+typedef void trip_handle_stream_t(void *, trip_stream_t *, bool open);
+typedef void trip_handle_message_t(void *, trip_stream_t *, tripbuf_t *);
+typedef void trip_handle_message_done_t(void *, size_t, unsigned char *);
+
 enum trip_preset
 {
     TRIP_PRESET_SERVER,
     TRIP_PRESET_CLIENT,
-};
-enum trip_router_opt
-{
-    TRIPOPT_KEYPAIR,
-    TRIPOPT_SIGNATURE,
-    TRIPOPT_WATCH,
-    TRIPOPT_TIMEOUT,
+    TRIP_PRESET_MULTICLIENT,
 };
 
-const char *
-trip_router_errmsg(trip_router_t *_r);
-int
-trip_router_setopt(trip_router_t *r, enum trip_router_opt opt, void *v);
+enum trip_router_opt
+{
+    TRIPOPT_OPEN_KP,
+    TRIPOPT_SIGN_KP,
+    TRIPOPT_USER_DATA,
+    TRIPOPT_WATCH_CB,
+    TRIPOPT_TIMEOUT_CB,
+    TRIPOPT_SCREEN_CB,
+    TRIPOPT_CONNECTION_CB,
+    TRIPOPT_STREAM_CB,
+    TRIPOPT_MESSAGE_CB,
+};
+
 trip_router_t *
-trip_router_new_preset(enum trip_preset preset, trip_memory_t *m, trip_packet_t *p);
-int
-trip_router_perform(trip_router_t *r);
-int
-trip_router_watch(trip_router_t *r, uint32_t timeout);
-//trip_connection_t *
-//trip_router_mk_connection(trip_router_t *r, const char *info, void *, trip_connection_stream_cb_t cb);
-//trip_router_open_connection(trip_router_t *r, const char *info, void *, trip_connection_stream_cb_t cb);
-int
-trip_router_stop(trip_router_t *r);
+trip_new(enum trip_preset preset, trip_memory_t *m, trip_packet_t *p);
 void
-trip_router_free(trip_router_t *r);
+trip_free(trip_router_t *r);
+
+int
+trip_setopt(trip_router_t *r, enum trip_router_opt opt, ...);
+
+const char *
+trip_errmsg(trip_router_t *_r);
+
+int
+trip_action(trip_router_t *, trip_socket_t, int);
+
+int
+trip_start(trip_router_t *r);
+int
+trip_run(trip_router_t *r, int timeout);
+int
+trip_stop(trip_router_t *r);
+
+void
+trip_open_connection(trip_router_t *r, void *, size_t, const unsigned char *);
+
 
 
 /* TRiP Connection Interface */
-//int
-//trip_connection_close(TRIPC *c);
-//TRIPS *
-//trip_connection_mk_stream(TRIPC *c);
+#define TRIPS_OPT_PRIORITY (1 << 0)
+#define TRIPS_OPT_CHUNK    (1 << 1)
+#define TRIPS_OPT_ORDERED  (1 << 2)
+#define TRIPS_OPT_RELIABLE (1 << 3)
+bool
+tripc_isopen(trip_connection_t *c);
+int
+tripc_close(trip_connection_t *c);
+trip_stream_t *
+tripc_open_stream(trip_connection_t *, int, int);
 
 
 /* TRiP Stream Interface */
-//int
-//trip_stream_close(TRIPS *s);
-//int
-//trip_stream_send(TRIPS *s, void *d, size_t ds);
-
-/*
-module.exports = {
-  // Typical-use API
-  mkNonce,
-  mkKeyPair,
-  mkSignPair,
-  mkSocket,
-  mkServer,
-  mkClient,
-  SettingPreset,
-  mkSettings,
-  // Low-level API for Customization
-  SocketInterface,
-  SenderInterface,
-  mkRouter,
-};
-*/
+bool
+trips_isopen(trip_stream_t *s);
+int
+trips_close(trip_stream_t *s);
+int
+trips_send(trip_stream_t *s, size_t, unsigned char *);
 
 
 
