@@ -19,41 +19,35 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  ******************************************************************************/
-#include "libtrp.h"
-#include "util.h"
+/**
+ * @file core.h
+ * @author Craig Jacobson
+ * @brief Core typedefs used in many places.
+ */
+#ifndef _LIBTRP_CORE_H_
+#define _LIBTRP_CORE_H_
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-#include <stdlib.h>
+
+#define trip_torouter(R, _R) _trip_router_t * R  = ((_trip_router_t *)(_R));
+#define trip_toconn(C, _C) _trip_connection_t * C  = ((_trip_connection_t *)(_C));
+#define trip_tostream(S, _S) _trip_stream_t * S  = ((_trip_stream_t *)(_S));
+#define trip_tobuffer(B, _B) _tripbuf_t * B  = ((_tripbuf_t *)(_B));
+
+typedef struct _trip_router_s _trip_router_t;
+typedef struct _trip_connection_s _trip_connection_t;
+typedef struct _trip_stream_s _trip_stream_t;
+typedef struct _trip_msg_s _trip_msg_t;
+typedef struct _tripbuf_s _tripbuf_t;
+typedef struct _trip_wait_s _trip_wait_t;
+typedef struct _trip_prefix_s _trip_prefix_t;
+typedef struct _trip_open_s _trip_open_t;
 
 
-void *
-trip_memory_alloc_impl(void * UNUSED(ud), size_t len)
-{
-    return malloc(len);
+#ifdef __cplusplus
 }
-
-void *
-trip_memory_realloc_impl(void * UNUSED(ud), void *p, size_t len)
-{
-    return realloc(p, len);
-}
-
-void
-trip_memory_free_impl(void * UNUSED(ud), void *p)
-{
-    free(p);
-}
-
-static trip_memory_t g_trip_memory =
-{
-    NULL,
-    trip_memory_alloc_impl,
-    trip_memory_realloc_impl,
-    trip_memory_free_impl
-};
-
-trip_memory_t *
-trip_memory_default(void)
-{
-    return &g_trip_memory;
-}
+#endif
+#endif /* _LIBTRP_CORE_H_ */
 

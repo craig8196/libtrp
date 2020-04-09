@@ -19,41 +19,23 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  ******************************************************************************/
+/**
+ * @file time.h
+ * @author Craig Jacobson
+ * @brief Time functions. Currently in main libtrp.h file.
+ */
+#ifndef _LIBTRP_TIME_H_
+#define _LIBTRP_TIME_H_
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 #include "libtrp.h"
-#include "util.h"
-
-#include <stdlib.h>
 
 
-void *
-trip_memory_alloc_impl(void * UNUSED(ud), size_t len)
-{
-    return malloc(len);
+#ifdef __cplusplus
 }
-
-void *
-trip_memory_realloc_impl(void * UNUSED(ud), void *p, size_t len)
-{
-    return realloc(p, len);
-}
-
-void
-trip_memory_free_impl(void * UNUSED(ud), void *p)
-{
-    free(p);
-}
-
-static trip_memory_t g_trip_memory =
-{
-    NULL,
-    trip_memory_alloc_impl,
-    trip_memory_realloc_impl,
-    trip_memory_free_impl
-};
-
-trip_memory_t *
-trip_memory_default(void)
-{
-    return &g_trip_memory;
-}
+#endif
+#endif /* _LIBTRP_TIME_H_ */
 

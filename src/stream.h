@@ -19,41 +19,49 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  ******************************************************************************/
-#include "libtrp.h"
-#include "util.h"
+/**
+ * @file stream.h
+ * @author Craig Jacobson
+ * @brief Stream details.
+ */
+#ifndef _LIBTRP_STREAM_H_
+#define _LIBTRP_STREAM_H_
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-#include <stdlib.h>
+
+#include "core.h"
 
 
-void *
-trip_memory_alloc_impl(void * UNUSED(ud), size_t len)
+/* First options/flags are set by the user.
+ * Remaining flags are set internally and used by the framework.
+ */
+#define _TRIPS_OPT_BACKFLOW (1 << 4)
+#define _TRIPS_OPT_CLOSED   (1 << 5)
+#define _TRIPS_OPT_STALLED  (1 << 6)
+#define _TRIPS_OPT_PUBMASK (0x000F)
+#define _TRIPS_OPT_SECMASK (0x007F)
+
+// TODO idea for stream message lookup is to store in n x n array
+// TODO n long and n max messages linked per entry grow array by one
+// TODO attackers would need number that hashes perfectly and growing
+// TODO will throw clustering off
+struct _trip_stream_s
 {
-    return malloc(len);
-}
+    /* Frequently Accessed */
+    void *ud;
+    _trip_connection_t *connection;
 
-void *
-trip_memory_realloc_impl(void * UNUSED(ud), void *p, size_t len)
-{
-    return realloc(p, len);
-}
-
-void
-trip_memory_free_impl(void * UNUSED(ud), void *p)
-{
-    free(p);
-}
-
-static trip_memory_t g_trip_memory =
-{
-    NULL,
-    trip_memory_alloc_impl,
-    trip_memory_realloc_impl,
-    trip_memory_free_impl
+    int id;
+    int flags;
+    _trip_msg_t *listbeg;
+    _trip_msg_t *listend;
 };
 
-trip_memory_t *
-trip_memory_default(void)
-{
-    return &g_trip_memory;
+
+#ifdef __cplusplus
 }
+#endif
+#endif /* _LIBTRP_STREAM_H_ */
 

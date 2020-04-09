@@ -19,41 +19,41 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  ******************************************************************************/
-#include "libtrp.h"
-#include "util.h"
+/**
+ * @file message.h
+ * @author Craig Jacobson
+ * @brief Message definition.
+ */
+#ifndef _LIBTRP_MESSAGE_H_
+#define _LIBTRP_MESSAGE_H_
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-#include <stdlib.h>
+
+#include "core.h"
 
 
-void *
-trip_memory_alloc_impl(void * UNUSED(ud), size_t len)
+struct _trip_msg_s
 {
-    return malloc(len);
-}
+    _trip_stream_t *stream;
 
-void *
-trip_memory_realloc_impl(void * UNUSED(ud), void *p, size_t len)
-{
-    return realloc(p, len);
-}
+    /* Streams are stored in a list.
+     */
+    _trip_msg_t *next;
 
-void
-trip_memory_free_impl(void * UNUSED(ud), void *p)
-{
-    free(p);
-}
-
-static trip_memory_t g_trip_memory =
-{
-    NULL,
-    trip_memory_alloc_impl,
-    trip_memory_realloc_impl,
-    trip_memory_free_impl
+    int zone;// 0 or 1, indicates which segment zone this message falls
+    uint32_t id;// id or index in zone
+    int priority;// 0 high 1 low
+    size_t boff; // amount sent
+    size_t blen; // length, don't change
+    unsigned char *buf; // data, don't change
+    _trip_msg_t *sendnext; // next message in the queue
 };
 
-trip_memory_t *
-trip_memory_default(void)
-{
-    return &g_trip_memory;
+
+#ifdef __cplusplus
 }
+#endif
+#endif /* _LIBTRP_MESSAGE_H_ */
 
