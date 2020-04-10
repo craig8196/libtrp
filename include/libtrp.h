@@ -165,10 +165,10 @@ typedef void trip_handle_watch_t(trip_router_t *, trip_socket_t, int);
 typedef void trip_handle_timeout_t(trip_router_t *, int);
 
 typedef void trip_handle_screen_t(void *);
-typedef void trip_handle_connection_t(void *, trip_connection_t *);
-typedef void trip_handle_stream_t(void *, trip_stream_t *, bool open);
-typedef void trip_handle_message_t(void *, trip_stream_t *, tripbuf_t *);
-typedef void trip_handle_message_done_t(void *, size_t, unsigned char *);
+typedef void trip_handle_connection_t(trip_connection_t *);
+typedef void trip_handle_stream_t(trip_stream_t *, bool open);
+typedef void trip_handle_message_t(trip_stream_t *, size_t, unsigned char *);
+typedef void trip_handle_message_done_t(trip_stream_t *, size_t, unsigned char *);
 
 enum trip_preset
 {
@@ -230,6 +230,10 @@ tripc_open_stream(trip_connection_t *, int, int);
 
 
 /* TRiP Stream Interface */
+#define TRIPS_DONE (0)
+#define TRIPS_RECV (1)
+// Message not fully received.
+#define TRIPS_KILL (2)
 bool
 trips_isopen(trip_stream_t *s);
 int
