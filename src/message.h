@@ -46,7 +46,7 @@ struct _trip_msg_s
     uint32_t id;// id or index in zone
     int priority;// 0 high 1 low
     size_t boff; // amount sent
-    size_t blen; // length, don't change
+    size_t len; // length, don't change
     unsigned char *buf; // data, don't change
     _trip_msg_t *sendnext; // next message in the queue
 };
