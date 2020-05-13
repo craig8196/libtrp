@@ -81,8 +81,6 @@ struct _trip_router_s
     trip_handle_watch_t *watch;
     trip_handle_timeout_t *timeout;
     trip_handle_connection_t *connection;
-    trip_handle_stream_t *stream;
-    trip_handle_message_t *message;
 
     /* Wait Data */
     _trip_wait_t *wait;
@@ -96,23 +94,8 @@ struct _trip_router_s
     int error;
     char *errmsg;
 
-    /* Connection Info
-     * An array of pointers is currently used.
-     * The connection's ID is also the index when modulo conlen.
-     * This gives us lookup speed and some level of randomness.
-5    * Also, guarantee's ID uniqueness within the array.
-     * Example:
-     * conmask = 0x03;
-     * concap = 4;
-     * id = 0xABCDEF11; // upper bits can be random if above max_conn
-     * true = id % concap == id & conmask == index == 1;
-     */
-    uint32_t conmask; /* concap - 1 */
-    uint32_t concap; /* Power of 2. */
-    uint32_t conlen; /* Number of connections. */
-    _trip_connection_t **con; /* Array of connections. */
-    _trip_connection_t *confree; /* Linked list of previously used connections. */
-    _trip_connection_t **conempty; /* Pointer to where to start searching. */
+    /* Connections. */
+    connmap_t con;
 
     /* Send Management */
     _trip_connection_t *sendbeg;
@@ -153,6 +136,10 @@ struct _trip_router_s
     int timeout_stop;
     int timeout_notify;
 };
+
+trip_memory_t *
+_trip_get_mem(_trip_router_t *r);
+
 
 #ifdef __cplusplus
 }

@@ -3,15 +3,21 @@
 - [x] Create test framework from ss?
 - [x] Setup for .so only to start, static library requires special setup for libsodium.
 - [x] Buffer structure:
-struct tripbuf_s
-{
-    size_t cap;
-    size_t len;
-    //char buf[];
-};
-tripbuf_len(buf);
-tripbuf_get(buf);
 - [x] Serialization. Use pack/unpack from beejs guide!!!
+
+- [ ] Make connection IDs uint64_t.
+
+- [ ] Non-UDP packet framework just to connect two routers "0" or "1".
+
+- [ ] Connection data structure, resizable array.
+- [ ] Stream data structure, resizable array.
+- [ ] Message Descriptor structure.
+- [ ] Message structure simplification with message descriptor.
+- [ ] Zone data structure. Mostly conceptual?
+- [ ] Incoming message data structure.
+
+- [ ] Client library routines for simplification?
+- [ ] IP:Port to index.
 - [ ] Create compilable framework.
 - [ ] Determine next steps with packet interface.
 - [ ] Make packet interface close to UDP interface.

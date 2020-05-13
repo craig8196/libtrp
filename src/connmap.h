@@ -20,50 +20,71 @@
  * SOFTWARE.
  ******************************************************************************/
 /**
- * @file stream.h
+ * @file connmap.h
  * @author Craig Jacobson
- * @brief Stream details.
+ * @brief Connection map.
  */
-#ifndef _LIBTRP_STREAM_H_
-#define _LIBTRP_STREAM_H_
+#ifndef _LIBTRP_CONNECTION_MAP_H_
+#define _LIBTRP_CONNECTION_MAP_H_
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 
-#include "core.h"
-#include "message.h"
+#include <stdint.h>
+
+#include "conn.h"
 
 
-/* First options/flags are set by the user.
- * Remaining flags are set internally and used by the framework.
+// TODO use union of _trip_connection_t * and void * for free list.
+/**
+ * Currently limited to power of 2 max connections.
+ * The connection's ID is also the index when modulo conlen.
+ * This gives us lookup speed and some level of randomness.
+ * Also, guarantee's ID uniqueness within the array.
+ * Example:
+ * mask = 0x03;
+ * cap = 4;
+ * id = 0xABCDEF11; // upper bits can be random if above max
+ * (id % cap) == (id & mask) == (index == 1);
  */
-#define _TRIPS_OPT_BACKFLOW (1 << 4)
-#define _TRIPS_OPT_CLOSED   (1 << 5)
-#define _TRIPS_OPT_STALLED  (1 << 6)
-#define _TRIPS_OPT_PUBMASK (0x000F)
-#define _TRIPS_OPT_SECMASK (0x007F)
-
-// TODO idea for stream message lookup is to store in n x n array
-// TODO n long and n max messages linked per entry grow array by one
-// TODO attackers would need number that hashes perfectly and growing
-// TODO will throw clustering off
-struct _trip_stream_s
+typedef struct connmap_s
 {
-    /* Frequently Accessed */
-    void *ud;
-    trip_handle_message_t *message_cb;
-    _trip_connection_t *connection;
+    /* Mask for indexing. +1 for max number of entries, determines upper bits. */
+    uint64_t mask;
+    /* The number of upper bits that can be random. */
+    int bits;
+    /* Size of the map. */
+    int size;
+    /* Capacity of the map. */
+    int cap;
+    /* Map. */
+    _trip_connection_t **map;
+    /* Empty slot list. */
+    void *free;
+} connmap_t;
 
-    int id;
-    int flags;
-    _trip_msg_t *listbeg;
-    _trip_msg_t *listend;
-};
+void
+connmap_init(connmap_t *map, int max);
+
+void
+connmap_destroy(connmap_t *map);
+
+int
+connmap_iter_beg(connmap_t *map);
+
+int
+connmap_iter_end(connmap_t *map);
+
+int
+connmap_set(connmap_t *map, _trip_connection_t *conn);
+
+_trip_connection_t *
+connmap_get(connmap_t *map, uint64_t id);
 
 
 #ifdef __cplusplus
 }
 #endif
-#endif /* _LIBTRP_STREAM_H_ */
+#endif /* _LIBTRP_CONNECTION_MAP_H_ */
 

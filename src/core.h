@@ -23,6 +23,13 @@
  * @file core.h
  * @author Craig Jacobson
  * @brief Core typedefs used in many places.
+ *
+ * Prefixes:
+ * _trip  -> router/top level
+ * _tripc -> connection
+ * _trips -> stream
+ * _tripm -> message
+ * _tripbuf -> buffer
  */
 #ifndef _LIBTRP_CORE_H_
 #define _LIBTRP_CORE_H_

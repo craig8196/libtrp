@@ -49,218 +49,6 @@ _trip_msg_free(_trip_router_t *r, _trip_msg_t *msg)
     m->free(m->ud, msg);
 }
 
-/**
- * @brief Pick the message to send next data from.
- * @return NULL if Q's are empty; message to send data from otherwise.
- */
-_trip_msg_t *
-_tripc_sendq_pick(_trip_connection_t *c)
-{
-    c->sendwhich = (c->sendwhich + 1) & c->sendmask;
-
-    int which = c->sendwhich ? _TRIP_MESSAGE_PRIORITY : _TRIP_MESSAGE_WHENEVER;
-
-    if (c->sendbeg[which])
-    {
-        return c->sendbeg[which];
-    }
-    else
-    {
-        which = 0x01 & (which + 1);
-        if (c->sendbeg[which])
-        {
-            return c->sendbeg[which];
-        }
-        else
-        {
-            return NULL;
-        }
-    }
-}
-
-/**
- * @brief Remove the message.
- * @param m - The message should be at the front of its Q.
- */
-void
-_tripc_send_clear(_trip_connection_t *c, _trip_msg_t *m)
-{
-    if (m == c->sendbeg[m->priority])
-    {
-        if (c->sendbeg[m->priority] == c->sendend[m->priority])
-        {
-            c->sendbeg[m->priority] = NULL;
-            c->sendend[m->priority] = NULL;
-        }
-        else
-        {
-            c->sendbeg[m->priority] = m->sendnext;
-        }
-
-        m->sendnext = NULL;
-    }
-
-}
-
-/**
- * @brief Add the message to the send Q.
- */
-void
-_tripc_sendq_add(_trip_connection_t *c, _trip_msg_t *m)
-{
-    if (c->sendend[m->priority])
-    {
-        c->sendend[m->priority]->sendnext = m;
-        c->sendend[m->priority] = m;
-    }
-    else
-    {
-        c->sendbeg[m->priority] = m;
-        c->sendend[m->priority] = m;
-    }
-
-    m->sendnext = NULL;
-}
-
-int
-_tripc_close_stream(_trip_connection_t *c, _trip_stream_t *s)
-{
-    return 0;
-}
-
-bool
-trips_isopen(trip_stream_t *_s)
-{
-    trip_streamify(s, _s);
-    return !s->closed;
-}
-
-int
-trips_close(trip_stream_t *_s)
-{
-    trip_streamify(s, _s);
-    int code = 0;
-
-    if (s->connection)
-    {
-        code = _tripc_close_stream(s->connection, s);
-    }
-    else
-    {
-        /* Stream is invalid. */
-        code = EINVAL;
-    }
-
-    return code;
-}
-
-int
-_tripc_message_zone(_trip_connection_t *c)
-{
-    return c->zone;
-}
-
-void
-_tripc_update_zones(_trip_connection_t *c)
-{
-    c = c;
-    // TODO stall all streams, add stall to streams so they reject more messages
-}
-
-uint32_t
-_tripc_next_message_id(_trip_connection_t *c)
-{
-    uint32_t id = c->nextmsgid;
-    ++c->nextmsgid;
-
-    if (c->nextmsgid > c->router->max_message_id)
-    {
-        _tripc_update_zones(c);
-    }
-
-    return id;
-}
-
-int
-_trips_priority(_trip_stream_t *s)
-{
-    return s->flags & TRIPS_OPT_PRIORITY;
-}
-
-void
-_trips_msg_nq(_trip_stream_t *s, _trip_msg_t *m)
-{
-    if (s->listend)
-    {
-        s->listend->next = m;
-        s->listend = m;
-    }
-    else
-    {
-        s->listbeg = m;
-        s->listend = m;
-    }
-    m->next = NULL;
-}
-
-int
-trips_send(trip_stream_t *_s, size_t len, unsigned char *buf)
-{
-    trip_streamify(s, _s);
-
-    int code = 0;
-
-    do
-    {
-        if (!buf || !len)
-        {
-            code = EINVAL;
-            break;
-        }
-
-        if (!s->connection)
-        {
-            code = ENOTCONN;
-            break;
-        }
-
-        if (s->flags & _TRIPS_OPT_CLOSED)
-        {
-            code = ESHUTDOWN;
-            break;
-        }
-
-        if (s->flags & (_TRIPS_OPT_BACKFLOW | _TRIPS_OPT_STALLED))
-        {
-            code = EWOULDBLOCK;
-            break;
-        }
-
-        _trip_msg_t *m = _trip_msg_new(s->connection->router);
-        
-        if (!m)
-        {
-            code = ENOMEM;
-            break;
-        }
-
-        m->stream = s;
-        m->next = NULL;
-        m->zone = _tripc_message_zone(s->connection);;
-        m->id = _tripc_next_message_id(s->connection);
-        m->priority = _trips_priority(s);
-        m->boff = 0;
-        m->blen = len;
-        m->buf = buf;
-        m->sendnext = NULL;
-
-        _tripc_sendq_add(s->connection, m);
-        _trips_msg_nq(s, m);
-    } while (false);
-
-    return code;
-}
-
 int
 _trip_close_connection(_trip_connection_t *c)
 {
@@ -370,169 +158,6 @@ _trip_send_nq(_trip_router_t *r, _trip_connection_t *c)
     }
 }
 
-int
-_tripc_read(_trip_connection_t *c, _tripbuf_t *b)
-{
-    switch (c->state)
-    {
-        case _TRIPC_STATE_START:
-            {
-                /* Possible next states: OPEN.
-                 */
-            }
-            break;
-        case _TRIPC_STATE_OPEN:
-            {
-            }
-            break;
-        case _TRIPC_STATE_CHAL:
-            {
-            }
-            break;
-        case _TRIPC_STATE_PING:
-            {
-            }
-            break;
-        case _TRIPC_STATE_READY:
-            {
-            }
-            break;
-        case _TRIPC_STATE_READY_PING:
-            {
-            }
-            break;
-        case _TRIPC_STATE_NOTIFY:
-            {
-            }
-            break;
-        case _TRIPC_STATE_DISCONNECT:
-            {
-            }
-            break;
-        case _TRIPC_STATE_END:
-            {
-            }
-            break;
-        case _TRIPC_STATE_ERROR:
-            {
-            }
-            break;
-        default:
-            {
-                c->error = EINVAL;
-            }
-            break;
-    }
-
-    return c->error;
-}
-
-int
-_tripc_timeout(_trip_connection_t *c)
-{
-    switch (c->state)
-    {
-        case _TRIPC_STATE_START:
-            {
-            }
-            break;
-        case _TRIPC_STATE_OPEN:
-            {
-            }
-            break;
-        case _TRIPC_STATE_CHAL:
-            {
-            }
-            break;
-        case _TRIPC_STATE_PING:
-            {
-            }
-            break;
-        case _TRIPC_STATE_READY:
-            {
-            }
-            break;
-        case _TRIPC_STATE_READY_PING:
-            {
-            }
-            break;
-        case _TRIPC_STATE_NOTIFY:
-            {
-            }
-            break;
-        case _TRIPC_STATE_DISCONNECT:
-            {
-            }
-            break;
-        case _TRIPC_STATE_END:
-            {
-            }
-            break;
-        case _TRIPC_STATE_ERROR:
-            {
-            }
-            break;
-        default:
-            {
-                c->error = EINVAL;
-            }
-            break;
-    }
-}
-
-int
-_tripc_send(_trip_connection_t *c, _tripbuf_t *b)
-{
-    switch (c->state)
-    {
-        case _TRIPC_STATE_START:
-            {
-            }
-            break;
-        case _TRIPC_STATE_OPEN:
-            {
-            }
-            break;
-        case _TRIPC_STATE_CHAL:
-            {
-            }
-            break;
-        case _TRIPC_STATE_PING:
-            {
-            }
-            break;
-        case _TRIPC_STATE_READY:
-            {
-            }
-            break;
-        case _TRIPC_STATE_READY_PING:
-            {
-            }
-            break;
-        case _TRIPC_STATE_NOTIFY:
-            {
-            }
-            break;
-        case _TRIPC_STATE_DISCONNECT:
-            {
-            }
-            break;
-        case _TRIPC_STATE_END:
-            {
-            }
-            break;
-        case _TRIPC_STATE_ERROR:
-            {
-            }
-            break;
-        default:
-            {
-                c->error = EINVAL;
-            }
-            break;
-    }
-}
-
 void
 _trip_listen(_trip_router_t *r, trip_socket_t fd, int events)
 {
@@ -605,7 +230,7 @@ _trip_close(_trip_router_t *r)
 const char *
 trip_errmsg(trip_router_t *_r)
 {
-    trip_routerify(r, _r);
+    trip_torouter(r, _r);
     return r->errmsg ? r->errmsg : "";
 }
 
@@ -614,7 +239,7 @@ trip_setopt(trip_router_t *_r, enum trip_router_opt opt, ...)
 {
 	va_list ap;
 
-    trip_routerify(r, _r);
+    trip_torouter(r, _r);
     int rval = 0;
 
 	va_start(ap, opt);
@@ -690,15 +315,6 @@ _trip_get_connection(_trip_router_t *r, uint32_t id)
     {
         return NULL;
     }
-}
-
-void
-_tripc_init(_trip_connection_t *c, _trip_router_t *r, uint32_t id)
-{
-    c->ud = NULL;
-    c->router = r;
-    c->id = id;
-    c->next = NULL;
 }
 
 /**
@@ -850,71 +466,6 @@ _trip_new_connection(_trip_router_t *r)
     } while (false);
 
     return c;
-}
-
-/**
- * @brief OPEN sequences are unique.
- *
- * Latest should be set to 512.
- * If greater than 512. Invalid.
- */
-int
-_tripc_check_open_seq(_trip_connection_t *c, uint32_t seq)
-{
-    // TODO not finished here
-    if (seq >= c->seqlatest)
-    {
-        return EINVAL;
-    }
-
-    if (seq < c->seqfloor)
-    {
-        return EINVAL;
-    }
-
-    ++c->seqfloor;
-
-    if (c->seqfloor >= c->seqlatest)
-    {
-        c->seqfloor = 0;
-    }
-
-    return 0;
-}
-
-/**
- * @brief Flag the number. Advance window if needed.
- *
- *
- * seq is bad and previously discarded
- * floor?
- * seq is bad and previously discarded
- * newfloor = 512 less than latest
- * floor?
- *
- * latest
- * seq advance latest
- */
-void
-_tripc_flag_open_seq(_trip_connection_t *c, uint32_t seq)
-{
-    if (seq > c->seqlatest)
-    {
-        c->seqlatest = seq;
-    }
-
-    ++c->seqfloor;
-    if (c->seqfloor >= c->seqlatest)
-    {
-    }
-    else
-    {
-    }
-}
-
-int
-_tripc_seg(_trip_connection_t *c, unsigned char control, int len, unsigned char *buf)
-{
 }
 
 static void
@@ -1104,7 +655,7 @@ _trip_set_state(_trip_router_t *r, enum _tripr_state state)
 void
 trip_seg(trip_router_t *_r, int src, size_t len, void *buf)
 {
-    trip_routerify(r, _r);
+    trip_torouter(r, _r);
 
     if (_TRIPR_STATE_LISTEN == r->state || _TRIPR_STATE_NOTIFY == r->state)
     {
@@ -1115,7 +666,7 @@ trip_seg(trip_router_t *_r, int src, size_t len, void *buf)
 void
 trip_ready(trip_router_t *_r)
 {
-    trip_routerify(r, _r);
+    trip_torouter(r, _r);
 
     if (_TRIPR_STATE_BIND == r->state)
     {
@@ -1128,32 +679,14 @@ trip_ready(trip_router_t *_r)
 }
 
 void
-_tripc_emptyq_add(_trip_router_t *r, _trip_connection_t *c)
-{
-    if (r->confree)
-    {
-        r->confree->next = c;
-    }
-
-    r->confree = c;
-    c->next = NULL;
-}
-
-void
-_tripc_open(_trip_connection_t *c)
-{
-    // TODO
-}
-
-void
 trip_resolve(trip_router_t *_r, trip_connection_t *_c, int err)
 {
-    trip_routerify(r, _r);
+    trip_torouter(r, _r);
     trip_connify(c, _c);
 
     if (!err)
     {
-        _tripc_open(c);
+        _tripc_start(c);
     }
     else
     {
@@ -1167,7 +700,7 @@ trip_resolve(trip_router_t *_r, trip_connection_t *_c, int err)
 void
 trip_watch(trip_router_t *_r, trip_socket_t fd, int events)
 {
-    trip_routerify(r, _r);
+    trip_torouter(r, _r);
 
     r->watch(_r, fd, events);
 }
@@ -1175,7 +708,7 @@ trip_watch(trip_router_t *_r, trip_socket_t fd, int events)
 void
 trip_unready(trip_router_t *_r, int err)
 {
-    trip_routerify(r, _r);
+    trip_torouter(r, _r);
 
     r->error = err;
     _trip_set_state(r, _TRIPR_STATE_UNBIND);
@@ -1408,7 +941,7 @@ void
 trip_open_connection(trip_router_t *_r, void *ud, size_t ilen,
                      const unsigned char *info)
 {
-    trip_routerify(r, _r);
+    trip_torouter(r, _r);
 
     if (r->allow_out)
     {
@@ -1426,7 +959,7 @@ trip_open_connection(trip_router_t *_r, void *ud, size_t ilen,
 int
 trip_start(trip_router_t *_r)
 {
-    trip_routerify(r, _r);
+    trip_torouter(r, _r);
     return trip_action(_r, TRIP_SOCKET_TIMEOUT, 0);
 }
 
@@ -1463,7 +996,7 @@ _trip_fd_events_to_epoll(int events)
 void
 _trip_watch_cb(trip_router_t *_r, int fd, int events)
 {
-    trip_routerify(r, _r);
+    trip_torouter(r, _r);
     _trip_wait_t *w = r->wait;
 
     int c;
@@ -1497,7 +1030,7 @@ _trip_watch_cb(trip_router_t *_r, int fd, int events)
 void
 _trip_timeout_cb(trip_router_t *_r, int timeout)
 {
-    trip_routerify(r, _r);
+    trip_torouter(r, _r);
     _trip_wait_t *w = r->wait;
     w->timeout = timeout;
 }
@@ -1540,7 +1073,7 @@ _trip_timeout(_trip_router_t *r, uint64_t now, uint64_t maxdeadline)
 int
 trip_run(trip_router_t *_r, int maxtimeout)
 {
-    trip_routerify(r, _r);
+    trip_torouter(r, _r);
 
     int c = 0;
 
@@ -1626,7 +1159,7 @@ trip_run(trip_router_t *_r, int maxtimeout)
 int
 trip_stop(trip_router_t *_r)
 {
-    trip_routerify(r, _r);
+    trip_torouter(r, _r);
 
     int c = 0;
 
@@ -1645,7 +1178,7 @@ trip_stop(trip_router_t *_r)
 void
 trip_free(trip_router_t *_r)
 {
-    trip_routerify(r, _r);
+    trip_torouter(r, _r);
 
     trip_memory_t *mem = r->mem;
     mem->free(mem->ud, _r);

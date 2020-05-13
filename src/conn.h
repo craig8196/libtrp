@@ -70,7 +70,10 @@ struct _trip_connection_s
     int error;
     char *msg;
 
+    /* Connection ID
+     */
     uint32_t id;
+    
     /* Used to round-robin through connections when sending data.
      * Re-used to link unused connection structs.
      */
@@ -79,6 +82,12 @@ struct _trip_connection_s
     /* State */
     enum _tripc_state state;
     uint64_t statedeadline;
+
+    /* Streams
+     */
+    _trip_stream_t **streams;
+    int streamslen;
+    int streamscap;
 
 
     /* Sometimes we're unable to send the buffer, store here until ready.
@@ -122,7 +131,25 @@ struct _trip_connection_s
      */
     uint32_t seqfloor;
     uint32_t seqlatest;
+
+    /* Limits
+     */
+    uint32_t max_message_size;
 };
+
+
+int
+_tripc_start(_trip_connection_t *c, bool isincoming);
+int
+_tripc_set_state(_trip_connection_t *c, enum _tripc_state state);
+void
+_tripc_send_add(_trip_connection_t *c, _trip_msg_t *m);
+_trip_msg_t *
+_tripc_new_message(_trip_connection_t *c);
+void
+_tripc_free_message(_trip_connection_t *c, _trip_msg_t *m);
+void
+_tripc_close_stream(_trip_connection_t *c, _trip_stream_t *s);
 
 
 #ifdef __cplusplus

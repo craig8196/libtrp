@@ -25,7 +25,9 @@
  * @brief Stream code.
  */
 #include "libtrp.h"
-#include "_libtrp.h"
+#include "trip.h"
+#include "conn.h"
+#include "stream.h"
 
 #include <errno.h>
 #include <stdarg.h>
@@ -115,15 +117,24 @@ _trips_msg_remove(_trip_stream_t *s, _trip_msg_t *mess)
 /* STREAM SHARED */
 
 /**
+ * @brief Message incoming on stream.
+ */
+void
+_trips_message(_trip_stream_t *s, int len, unsigned char *buf)
+{
+    s->message_cb((trip_stream_t *)s, TRIPM_RECV, (size_t)len, buf);
+}
+
+/**
  * @brief Message was sent and confirmed received per stream requirements.
  */
 void
-_trips_msg_done(_trip_stream_t *s, _trip_msg_t *m, _trip_router_t *r)
+_trips_done_message(_trip_stream_t *s, _trip_msg_t *m)
 {
     _trips_msg_remove(s, m);
 
-    r->message(s, TRIPS_DONE, m->len, m->buf);
-    _trip_msg_free(r, msg);
+    s->message_cb((trip_stream_t *)s, TRIPM_SENT, m->len, m->buf);
+    _tripc_free_message(s->connection, m);
 }
 
 /**
@@ -131,7 +142,7 @@ _trips_msg_done(_trip_stream_t *s, _trip_msg_t *m, _trip_router_t *r)
  * @warn Not all messages may have been sent.
  */
 void
-_trips_destroy(_trip_stream_t *s, _trip_router_t *r)
+_trips_destroy(_trip_stream_t *s)
 {
     _trip_msg_t *m = s->listbeg;
     _trip_msg_t *n = NULL;
@@ -140,8 +151,8 @@ _trips_destroy(_trip_stream_t *s, _trip_router_t *r)
     {
         n = m->next;
 
-        r->message(s, TRIPS_KILL, m->len, m->buf);
-        _trip_msg_free(r, msg);
+        s->message_cb((trip_stream_t *)s, TRIPM_KILL, m->len, m->buf);
+        _tripc_free_message(s->connection, m);
 
         m = n;
     }
@@ -155,8 +166,8 @@ _trips_destroy(_trip_stream_t *s, _trip_router_t *r)
 bool
 trips_isopen(trip_stream_t *_s)
 {
-    trip_streamify(s, _s);
-    return !s->closed;
+    trip_tostream(s, _s);
+    return !(s->flags & _TRIPS_OPT_CLOSED);
 }
 
 /**
@@ -165,8 +176,7 @@ trips_isopen(trip_stream_t *_s)
 void
 trips_close(trip_stream_t *_s)
 {
-    trip_streamify(s, _s);
-    int code = 0;
+    trip_tostream(s, _s);
 
     if (s->connection)
     {
@@ -185,7 +195,7 @@ trips_close(trip_stream_t *_s)
 int
 trips_send(trip_stream_t *_s, size_t len, unsigned char *buf)
 {
-    trip_streamify(s, _s);
+    trip_tostream(s, _s);
 
     int code = 0;
 
@@ -197,7 +207,7 @@ trips_send(trip_stream_t *_s, size_t len, unsigned char *buf)
             break;
         }
 
-        if (!buf || !len || len > INT_MAX || len > c->max_message_size)
+        if (!buf || !len || len > INT_MAX || len > s->connection->max_message_size)
         {
             code = EINVAL;
             break;
@@ -215,7 +225,7 @@ trips_send(trip_stream_t *_s, size_t len, unsigned char *buf)
             break;
         }
 
-        _trip_msg_t *m = _trip_msg_new(s->connection->router);
+        _trip_msg_t *m = _tripc_new_message(s->connection);
         
         if (!m)
         {
@@ -225,15 +235,13 @@ trips_send(trip_stream_t *_s, size_t len, unsigned char *buf)
 
         m->stream = s;
         m->next = NULL;
-        m->zone = _tripc_message_zone(s->connection);;
-        m->id = _tripc_next_message_id(s->connection);
         m->priority = _trips_priority(s);
         m->boff = 0;
-        m->blen = len;
+        m->len = len;
         m->buf = buf;
         m->sendnext = NULL;
 
-        _tripc_sendq_add(s->connection, m);
+        _tripc_send_add(s->connection, m);
         _trips_msg_add(s, m);
     } while (false);
 

@@ -17,23 +17,23 @@ Enjoy!
 
 
 ## Definitions and Terms
-**packet:** Raw data transmitted, including IP, UDP, and other headers.
-**segment**: Raw data once non-TRiP headers are stripped.
+**packet:** Raw data transmitted, including IP, UDP, and other headers.  
+**segment**: Raw data once non-TRiP headers are stripped.  
 **rinfo:** Return information.  
 **socket:** Interface to sending/receiving packet information.  
 **sender:** Context for sending to specific destination using a socket.  
 **router:** Basic packet validation and routing to connections.  
 **connection:** Individual connection between routers.  
 **stream:** Unidirectional messaging context.  
-**message:** Atomic unit of data in a stream.  
+**message:** Atomic unit of data in a stream.
          Don't confuse with 'message' from dgram event.  
 **fragment:** Part of a message.  
 **client:** The peer seeking to OPEN a connection.  
 **server:** The peer receiving the OPEN request.  
-**peer:** The other end of the connection.
-**notify:** Notification to disconnect.
+**peer:** The other end of the connection.  
+**notify:** Notification to disconnect.  
 **disconnect:** Disconnect without any further waiting.  
-**kill:** Hard disconnect without sending anything further.
+**kill:** Hard disconnect without sending anything further.  
 
 
 ## Dependencies

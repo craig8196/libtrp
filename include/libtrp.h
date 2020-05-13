@@ -167,8 +167,14 @@ typedef void trip_handle_timeout_t(trip_router_t *, int);
 typedef void trip_handle_screen_t(void *);
 typedef void trip_handle_connection_t(trip_connection_t *);
 typedef void trip_handle_stream_t(trip_stream_t *, bool open);
-typedef void trip_handle_message_t(trip_stream_t *, size_t, unsigned char *);
-typedef void trip_handle_message_done_t(trip_stream_t *, size_t, unsigned char *);
+enum trip_message_code
+{
+    TRIPM_RECV,
+    TRIPM_SENT,
+    // Message not fully sent or received on other end.
+    TRIPM_KILL,
+};
+typedef void trip_handle_message_t(trip_stream_t *, enum trip_message_code, size_t, unsigned char *);
 
 enum trip_preset
 {
@@ -217,26 +223,25 @@ trip_open_connection(trip_router_t *r, void *, size_t, const unsigned char *);
 
 
 /* TRiP Connection Interface */
+#define TRIPC_STATUS_OPEN   (1 << 0)
+#define TRIPC_STATUS_CLOSED (1 << 1)
+#define TRIPC_STATUS_ERROR  (1 << 2)
+int
+tripc_status(trip_connection_t *c);
+void
+tripc_close(trip_connection_t *c);
 #define TRIPS_OPT_PRIORITY (1 << 0)
 #define TRIPS_OPT_CHUNK    (1 << 1)
 #define TRIPS_OPT_ORDERED  (1 << 2)
 #define TRIPS_OPT_RELIABLE (1 << 3)
-bool
-tripc_isopen(trip_connection_t *c);
-int
-tripc_close(trip_connection_t *c);
 trip_stream_t *
 tripc_open_stream(trip_connection_t *, int, int);
 
 
 /* TRiP Stream Interface */
-#define TRIPS_DONE (0)
-#define TRIPS_RECV (1)
-// Message not fully received.
-#define TRIPS_KILL (2)
 bool
 trips_isopen(trip_stream_t *s);
-int
+void
 trips_close(trip_stream_t *s);
 int
 trips_send(trip_stream_t *s, size_t, unsigned char *);

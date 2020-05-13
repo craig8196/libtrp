@@ -20,7 +20,6 @@
  * SOFTWARE.
  ******************************************************************************/
 #include "libtrp.h"
-#include "_libtrp.h"
 
 #include <errno.h>
 #include <string.h>

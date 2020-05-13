@@ -40,6 +40,8 @@ extern "C" {
 # define UNUSED(x) x
 #endif
 
+# define LIKELY(x) x
+
 
 #ifdef __cplusplus
 }
