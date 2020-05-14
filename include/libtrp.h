@@ -36,16 +36,9 @@ extern "C" {
 
 #include <sodium.h>
 
-
-/* TRiP Forward-Declared Handles */
-typedef struct trip_router_handle_s     { void *ud;}
-        trip_router_t;
-typedef struct trip_connection_handle_s { void *ud; }
-        trip_connection_t;
-typedef struct trip_stream_handle_s     { void *ud; }
-        trip_stream_t;
-typedef struct trip_buffer_handle_s     { char _hidden; }
-        tripbuf_t;
+#include "libtrp_handles.h"
+#include "libtrp_memory.h"
+#include "libtrp_packet.h"
 
 
 /* TRiP Global Init/Destroy */
@@ -55,86 +48,17 @@ void
 trip_global_destroy(void);
 
 
-/* TRiP Time */
-uint64_t
-triptime_now(void);
-uint64_t
-triptime_deadline(int);
-int
-triptime_timeout(uint64_t, uint64_t);
-
-
-/* TRiP Memory Interface */
-typedef void *trip_memory_alloc_t(void *, size_t);
-typedef void *trip_memory_realloc_t(void *, void *, size_t);
-typedef void trip_memory_free_t(void *, void *);
-
-typedef struct trip_memory_s
-{
-    void *ud;
-    trip_memory_alloc_t *alloc;
-    trip_memory_realloc_t *realloc;
-    trip_memory_free_t *free;
-} trip_memory_t;
-
-trip_memory_t *
-trip_memory_default(void);
-
-
-/* TRiP Buffers */
-size_t
-tripbuf_len(tripbuf_t *);
-size_t
-tripbuf_cap(tripbuf_t *);
-void *
-tripbuf(tripbuf_t *);
-
-
 /* TRiP Cryptography for User */
 #define TRIP_SIGN_PUB (crypto_sign_PUBLICKEYBYTES)
 #define TRIP_SIGN_SEC (crypto_sign_SECRETKEYBYTES)
-#define TRIP_KP_PUB (crypto_box_PUBLICKEYBYTES)
-#define TRIP_KP_SEC (crypto_box_SECRETKEYBYTES)
+#define TRIP_KEY_PUB (crypto_box_PUBLICKEYBYTES)
+#define TRIP_KEY_SEC (crypto_box_SECRETKEYBYTES)
 #define trip_sign_kp crypto_sign_keypair
 #define trip_kp crypto_box_keypair
 
 
 /* TRiP Socket Abstraction */
-typedef int trip_socket_t;
-#define TRIP_SOCKET_TIMEOUT (-1)
-
-
-/* TRiP Packet Interface */
-typedef void trip_packet_bind_t(void *);
-typedef void trip_packet_resolve_t(void *, trip_connection_t *);
-typedef int trip_packet_send_t(void *, tripbuf_t *);
-typedef int trip_packet_read_t(void *, trip_socket_t fd, int events, int max);
-typedef int trip_packet_unbind_t(void *);
-typedef int trip_packet_wait_t(void *);
-
-
-typedef struct trip_packet_s
-{
-    void *ud;
-    int *fds;
-    int *fde;
-    size_t fdlen;
-    trip_memory_t *mem;
-    trip_packet_bind_t *bind;
-    trip_packet_resolve_t *resolve;
-    trip_packet_send_t *send;
-    trip_packet_read_t *read;
-    trip_packet_unbind_t *unbind;
-    trip_packet_wait_t *wait;
-    /* Filled out by router if not by you. */
-    trip_router_t *router;
-} trip_packet_t;
-
-trip_packet_t *
-trip_packet_new_udp(trip_memory_t *m, const unsigned char *info);
-void
-trip_packet_free_udp(trip_packet_t *);
-
+#define TRIP_SOCKET_TIMEOUT ((trip_socket_t)(-1))
 enum trip_socket_event
 {
     TRIP_SOCK_EVENT_REMOVE  = 0,
@@ -143,21 +67,6 @@ enum trip_socket_event
     TRIP_SOCK_EVENT_INOUT   = 3,
     TRIP_SOCK_EVENT_ADD     = 4,
 };
-
-
-/* TRiP Packet to Router Communication */
-void
-trip_seg(trip_router_t *r, int src, size_t len, void *buf);
-void
-trip_ready(trip_router_t *r);
-void
-trip_resolve(trip_router_t *r, trip_connection_t *c, int err);
-void
-trip_watch(trip_router_t *r, trip_socket_t fd, int events);
-void
-trip_timeout(trip_router_t *r, int timeoutms);
-void
-trip_unready(trip_router_t *r, int err);
 
 
 /* TRiP Router Interface */
@@ -245,8 +154,6 @@ void
 trips_close(trip_stream_t *s);
 int
 trips_send(trip_stream_t *s, size_t, unsigned char *);
-
-
 
 
 #ifdef __cplusplus
