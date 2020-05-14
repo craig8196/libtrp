@@ -31,7 +31,17 @@ extern "C" {
 #endif
 
 
-#include "libtrp.h"
+#include <stdint.h>
+
+
+/* TRiP Time */
+uint64_t
+triptime_now(void);
+uint64_t
+triptime_deadline(int);
+int
+triptime_timeout(uint64_t, uint64_t);
+
 
 
 #ifdef __cplusplus
