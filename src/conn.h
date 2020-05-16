@@ -72,7 +72,7 @@ struct _trip_connection_s
 
     /* Connection ID
      */
-    uint32_t id;
+    uint64_t id;
     
     /* Used to round-robin through connections when sending data.
      * Re-used to link unused connection structs.

@@ -37,18 +37,17 @@ extern "C" {
 struct _trip_msg_s
 {
     _trip_stream_t *stream;
-
-    /* Streams are stored in a list.
-     */
-    _trip_msg_t *next;
-
-    int zone;// 0 or 1, indicates which segment zone this message falls
-    uint32_t id;// id or index in zone
-    int priority;// 0 high 1 low
-    size_t boff; // amount sent
     size_t len; // length, don't change
     unsigned char *buf; // data, don't change
-    _trip_msg_t *sendnext; // next message in the queue
+
+    uint32_t id;// id or index in zone
+    int zone;// 0 or 1, indicates which segment zone this message falls
+    int priority;// 0 high 1 low
+    _trip_part_t *parts;// list of parts to send
+
+    /* Messages are stored in a list.
+     */
+    _trip_msg_t *next;
 };
 
 

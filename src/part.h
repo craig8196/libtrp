@@ -20,41 +20,31 @@
  * SOFTWARE.
  ******************************************************************************/
 /**
- * @file util.h
+ * @file message.h
  * @author Craig Jacobson
- * @brief Various macros and tools for use.
+ * @brief Message definition.
  */
-#ifndef _LIBTRP_UTIL_H_
-#define _LIBTRP_UTIL_H_
+#ifndef _LIBTRP_PART_H_
+#define _LIBTRP_PART_H_
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 
-#ifdef UNUSED
-#elif defined(__GNUC__)
-# define UNUSED(x) UNUSED_ ## x __attribute__((unused))
-#elif defined(__LCLINT__)
-# define UNUSED(x) /*@unused@*/ x
-#else
-# define UNUSED(x) x
-#endif
-
-#ifdef __GNUC__
-#define LIKELY(x)   __builtin_expect(!!(x), 1)
-#define UNLIKELY(x) __builtin_expect(!!(x), 0)
-#else
-#define LIKELY(x)   (x)
-#define UNLIKELY(x) (x)
-#endif
+#include "core.h"
 
 
-int
-near_pwr2(int n);
+struct _trip_part_s
+{
+    _trip_msg_t *msg;
+    size_t off; // offset to start at in message
+    size_t len; // len to send
+    _trip_part_t *next; // next partial to 
+};
 
 
 #ifdef __cplusplus
 }
 #endif
-#endif /* _LIBTRP_UTIL_H_ */
+#endif /* _LIBTRP_PART_H_ */
 

@@ -20,41 +20,65 @@
  * SOFTWARE.
  ******************************************************************************/
 /**
- * @file util.h
+ * @file streammap.h
  * @author Craig Jacobson
- * @brief Various macros and tools for use.
+ * @brief Stream map.
  */
-#ifndef _LIBTRP_UTIL_H_
-#define _LIBTRP_UTIL_H_
+#ifndef _LIBTRP_STREAM_MAP_H_
+#define _LIBTRP_STREAM_MAP_H_
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 
-#ifdef UNUSED
-#elif defined(__GNUC__)
-# define UNUSED(x) UNUSED_ ## x __attribute__((unused))
-#elif defined(__LCLINT__)
-# define UNUSED(x) /*@unused@*/ x
-#else
-# define UNUSED(x) x
-#endif
+#include <stdbool.h>
+#include <stdint.h>
 
-#ifdef __GNUC__
-#define LIKELY(x)   __builtin_expect(!!(x), 1)
-#define UNLIKELY(x) __builtin_expect(!!(x), 0)
-#else
-#define LIKELY(x)   (x)
-#define UNLIKELY(x) (x)
-#endif
+#include "stream.h"
 
+
+/**
+ * Static array.
+ */
+typedef struct streammap_s
+{
+    /* Size of the map. */
+    int size;
+    /* Capacity of the map. */
+    int cap;
+    /* Map. NULL if not allocated. */
+    _trip_stream_t **map;
+    /* Empty slot list. */
+    void *free;
+} streammap_t;
+
+void
+streammap_init(streammap_t *map, int max);
+
+void
+streammap_destroy(streammap_t *map);
 
 int
-near_pwr2(int n);
+streammap_iter_beg(streammap_t *map);
+
+int
+streammap_iter_end(streammap_t *map);
+
+bool
+streammap_has_space(streammap_t *map);
+
+int
+streammap_add(streammap_t *map, _trip_stream_t *s);
+
+_trip_stream_t *
+streammap_del(streammap_t *map, int index);
+
+_trip_stream_t *
+streammap_get(streammap_t *map, int index);
 
 
 #ifdef __cplusplus
 }
 #endif
-#endif /* _LIBTRP_UTIL_H_ */
+#endif /* _LIBTRP_STREAM_MAP_H_ */
 

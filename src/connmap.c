@@ -13,7 +13,7 @@ void
 connmap_init(connmap_t *map, int max)
 {
     *map = (connmap_t){ 0 };
-    map->mask = max - 1;// TODO find power of 2 closest
+    map->mask = near_pwr2(max);
 }
 
 void
@@ -102,19 +102,24 @@ connmap_add(connmap_t *map, _trip_connection_t *conn)
 
                 map->map = m;
                 map->cap = 1;
+                map->free = &map->map[0];
             }
         }
 
         /* There are free slots. */
         _trip_connection_t **slot = map->free;
-        uint64_t index = (slot) - map->map;
-
-        uint64_t r = connmap_random();
-        uint64_t id = index ^ (r & ~map->mask);
-
         /* Advance free slot. */
         map->free = *((_trip_connection_t **)map->free);
+        /* Create ID. */
+        uint64_t index = (slot) - map->map;
+        uint64_t r = connmap_random();
+        uint64_t id = index ^ (r & ~map->mask);
+        conn->id = id;
+        *slot = conn;
+        /* Increase size. */
         ++map->size;
+
+
     } while (false);
 
     return code;

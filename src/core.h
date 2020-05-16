@@ -47,6 +47,7 @@ typedef struct _trip_router_s _trip_router_t;
 typedef struct _trip_connection_s _trip_connection_t;
 typedef struct _trip_stream_s _trip_stream_t;
 typedef struct _trip_msg_s _trip_msg_t;
+typedef struct _trip_part_s _trip_part_t;
 typedef struct _tripbuf_s _tripbuf_t;
 typedef struct _trip_wait_s _trip_wait_t;
 typedef struct _trip_prefix_s _trip_prefix_t;

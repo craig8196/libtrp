@@ -236,10 +236,9 @@ trips_send(trip_stream_t *_s, size_t len, unsigned char *buf)
         m->stream = s;
         m->next = NULL;
         m->priority = _trips_priority(s);
-        m->boff = 0;
         m->len = len;
         m->buf = buf;
-        m->sendnext = NULL;
+        m->parts = NULL;
 
         _tripc_send_add(s->connection, m);
         _trips_msg_add(s, m);

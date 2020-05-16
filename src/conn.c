@@ -328,6 +328,27 @@ _tripc_emptyq_add(_trip_router_t *r, _trip_connection_t *c)
 int
 _tripc_set_state(_trip_connection_t *c, enum _tripc_state state)
 {
+    /* When entering the state, do this. */
+    switch (state)
+    {
+        case _TRIPC_STATE_START:
+            break;
+        /*
+    _TRIPC_STATE_START,
+    _TRIPC_STATE_OPEN,
+    _TRIPC_STATE_CHAL,
+    _TRIPC_STATE_PING,
+    _TRIPC_STATE_READY,
+    _TRIPC_STATE_READY_PING,
+    _TRIPC_STATE_NOTIFY,
+    _TRIPC_STATE_DISCONNECT,
+    _TRIPC_STATE_END,
+    _TRIPC_STATE_ERROR,
+    */
+        default:
+            break;
+    }
+
     return c->error;
 }
 

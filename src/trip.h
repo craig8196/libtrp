@@ -32,6 +32,7 @@ extern "C" {
 
 
 #include "core.h"
+#include "connmap.h"
 
 
 #define trip_torouter(R, _R) _trip_router_t * R  = ((_trip_router_t *)(_R));

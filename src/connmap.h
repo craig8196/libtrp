@@ -36,7 +36,6 @@ extern "C" {
 #include "conn.h"
 
 
-// TODO use union of _trip_connection_t * and void * for free list.
 /**
  * Currently limited to power of 2 max connections.
  * The connection's ID is also the index when modulo conlen.
@@ -77,7 +76,10 @@ int
 connmap_iter_end(connmap_t *map);
 
 int
-connmap_set(connmap_t *map, _trip_connection_t *conn);
+connmap_add(connmap_t *map, _trip_connection_t *conn);
+
+_trip_connection_t *
+connmap_del(connmap_t *map, uint64_t id);
 
 _trip_connection_t *
 connmap_get(connmap_t *map, uint64_t id);
