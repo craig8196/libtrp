@@ -61,11 +61,10 @@ trip_global_destroy(void);
 #define TRIP_SOCKET_TIMEOUT ((trip_socket_t)(-1))
 enum trip_socket_event
 {
-    TRIP_SOCK_EVENT_REMOVE  = 0,
-    TRIP_SOCK_EVENT_IN      = 1,
-    TRIP_SOCK_EVENT_OUT     = 2,
-    TRIP_SOCK_EVENT_INOUT   = 3,
-    TRIP_SOCK_EVENT_ADD     = 4,
+    TRIP_REMOVE  = 0,
+    TRIP_IN      = 1,
+    TRIP_OUT     = 2,
+    TRIP_INOUT   = 3,
 };
 
 
@@ -126,16 +125,19 @@ trip_run(trip_router_t *r, int timeout);
 int
 trip_stop(trip_router_t *r);
 
-void
-trip_open_connection(trip_router_t *r, void *, size_t, const unsigned char *);
-
+trip_connection_t *
+trip_open_connection(trip_router_t *r);
 
 
 /* TRiP Connection Interface */
-#define TRIPC_STATUS_OPEN   (1 << 0)
-#define TRIPC_STATUS_CLOSED (1 << 1)
-#define TRIPC_STATUS_ERROR  (1 << 2)
-int
+enum trip_connection_status
+{
+    TRIPC_STATUS_OPEN   = 0,
+    TRIPC_STATUS_CLOSED = 1,
+    TRIPC_STATUS_KILLED = 2,
+    TRIPC_STATUS_ERROR  = 3,
+};
+enum trip_connection_status
 tripc_status(trip_connection_t *c);
 void
 tripc_close(trip_connection_t *c);
@@ -148,8 +150,15 @@ tripc_open_stream(trip_connection_t *, int, int);
 
 
 /* TRiP Stream Interface */
-bool
-trips_isopen(trip_stream_t *s);
+enum trip_stream_status
+{
+    TRIPS_STATUS_OPEN   = 0,
+    TRIPS_STATUS_CLOSED = 1,
+    TRIPS_STATUS_KILLED = 2,
+    TRIPS_STATUS_ERROR  = 3,
+};
+enum trip_stream_status
+trips_status(trip_stream_t *s);
 void
 trips_close(trip_stream_t *s);
 int
