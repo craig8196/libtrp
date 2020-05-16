@@ -4,7 +4,7 @@
 The details.
 
         "Onwaaaard!"
-            - The Knight from Journey Quest
+            - Glorion, The Knight from Journey Quest
 
 
 ## Overview
@@ -37,7 +37,7 @@ Enjoy!
 
 
 ## Dependencies
-Code for version 0 is dependent on NaCl or libsodium for encryption.
+Code for version 0 is dependent on libsodium for encryption.
 Code implementing TRiP over UDP based communication is dependent on appropriate OS interfaces.
 
 

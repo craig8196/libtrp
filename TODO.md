@@ -4,15 +4,15 @@
 - [x] Setup for .so only to start, static library requires special setup for libsodium.
 - [x] Buffer structure:
 - [x] Serialization. Use pack/unpack from beejs guide!!!
-
-- [ ] Make connection IDs uint64_t.
+- [x] Make connection IDs uint64_t.
 
 - [ ] Non-UDP packet framework just to connect two routers "0" or "1".
+- [ ] Use 'data' instead of 'ud'.
 
-- [ ] Connection data structure, resizable array.
-- [ ] Stream data structure, resizable array.
-- [ ] Message Descriptor structure.
-- [ ] Message structure simplification with message descriptor.
+- [x] Connection data structure, resizable array.
+- [x] Stream data structure, resizable array.
+- [x] Message Descriptor structure.
+- [x] Message structure simplification with message descriptor.
 - [ ] Zone data structure. Mostly conceptual?
 - [ ] Incoming message data structure.
 
