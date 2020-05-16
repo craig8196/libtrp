@@ -2,6 +2,18 @@
 #include "libtrp.h"
 #include <stdio.h>
 
+/*******************************************************************************
+ * CLIENT
+ ******************************************************************************/
+static void
+run_client()
+{
+}
+
+
+/*******************************************************************************
+ * SERVER
+ ******************************************************************************/
 
 typedef struct myserver_s
 {
@@ -59,17 +71,9 @@ handle_message(trip_stream_t *s, tripbuf_t *msg)
 {
 }
 
-int
-main()
+static void
+run_server()
 {
-    myserver_t ud;
-
-    ud.running = true;
-
-    /* Create our own signature. */
-    trip_kp(ud.openpub, ud.opensec);
-    trip_sign_kp(ud.signpub, ud.signsec);
-
     trip_router_t *server = trip_new(TRIP_PRESET_SERVER, NULL, NULL);
     trip_setopt(server, TRIPOPT_OPEN_KP, ud.openpub, ud.opensec);
     trip_setopt(server, TRIPOPT_SIGN_KP, ud.signpub, ud.signsec);
@@ -94,6 +98,28 @@ main()
     }
 
     trip_free(server);
+}
+
+int
+main()
+{
+    myserver_t ud;
+
+    ud.running = true;
+
+    /* Create our own signature. */
+    trip_kp(ud.openpub, ud.opensec);
+    trip_sign_kp(ud.signpub, ud.signsec);
+
+    const int parent = fork();
+    if (parent)
+    {
+        run_server();
+    }
+    else
+    {
+        run_client();
+    }
 
     return 0;
 }
