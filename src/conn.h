@@ -32,6 +32,7 @@ extern "C" {
 
 
 #include "core.h"
+#include "streammap.h"
 
 
 enum _trip_message_q
@@ -85,10 +86,7 @@ struct _trip_connection_s
 
     /* Streams
      */
-    _trip_stream_t **streams;
-    int streamslen;
-    int streamscap;
-
+    streammap_t streams;
 
     /* Sometimes we're unable to send the buffer, store here until ready.
      * segfull is true if just waiting to send.
@@ -96,8 +94,6 @@ struct _trip_connection_s
      * segwork contains unencrypted portion.
      */
     bool segfull;
-    _tripbuf_t *segment;
-    _tripbuf_t *segwork;
 
     /* Message Queues
      * Focus on sending one message at a time.
@@ -150,6 +146,13 @@ void
 _tripc_free_message(_trip_connection_t *c, _trip_msg_t *m);
 void
 _tripc_close_stream(_trip_connection_t *c, _trip_stream_t *s);
+
+void
+_tripc_flag_open_seq(_trip_connection_t *c, uint32_t seq);
+int
+_tripc_check_open_seq(_trip_connection_t *c, uint32_t seq);
+int
+_tripc_seg(_trip_connection_t *c, unsigned char control, int len, unsigned char *buf);
 
 
 #ifdef __cplusplus

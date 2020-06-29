@@ -57,7 +57,7 @@ connmap_add(connmap_t *map, _trip_connection_t *conn)
 
     do
     {
-        if (!free)
+        if (!map->free)
         {
             /* Need more free. */
             int max = connmap_max(map);

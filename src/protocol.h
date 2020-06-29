@@ -30,11 +30,31 @@
 extern "C" {
 #endif
 
+#include <stdint.h>
+#include <stdbool.h>
+
 
 enum _trip_control
 {
     _TRIP_CONTROL_OPEN,
     _TRIP_CONTROL_MAX,
+};
+
+#define _TRIP_PREFIX_EMASK (0x80)
+
+struct _trip_prefix_s
+{
+    uint8_t control;
+    uint64_t id;
+    uint32_t seq;
+    bool encrypted;
+};
+
+struct _trip_route_s
+{
+    uint16_t version;
+    uint64_t len;
+    void *route;
 };
 
 

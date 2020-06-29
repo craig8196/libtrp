@@ -25,7 +25,15 @@
  * @brief Core code for handling routers, connections, and streams.
  */
 #include "libtrp.h"
-#include "_libtrp.h"
+#include "libtrp_memory.h"
+
+#include "core.h"
+#include "trip.h"
+#include "conn.h"
+#include "message.h"
+#include "time.h"
+#include "protocol.h"
+#include "pack.h"
 
 #include <errno.h>
 #include <stdarg.h>
@@ -34,65 +42,29 @@
 
 
 _trip_msg_t *
-_trip_msg_new(_trip_router_t *r)
+_trip_msg_new()
 {
     // TODO check internal queue first
-    trip_memory_t *m = r->mem;
-    return m->alloc(m->ud, sizeof(_trip_msg_t));
+    return tripm_alloc(sizeof(_trip_msg_t));
 }
 
 void
-_trip_msg_free(_trip_router_t *r, _trip_msg_t *msg)
+_trip_msg_free(_trip_msg_t *msg)
 {
     // TODO enqueue
-    trip_memory_t *m = r->mem;
-    m->free(m->ud, msg);
-}
-
-int
-_trip_close_connection(_trip_connection_t *c)
-{
-    c = c;
-    // TODO whatever it takes to start closing the thing
-    return 0;
-}
-
-bool
-tripc_isopen(trip_connection_t *_c)
-{
-    trip_connify(c, _c);
-    return _TRIPC_STATE_READY == c->state || _TRIPC_STATE_READY_PING == c->state;
-}
-
-int
-tripc_close(trip_connection_t *_c)
-{
-    trip_connify(c, _c);
-    int code = 0;
-
-    if (c->router)
-    {
-        code = _trip_close_connection(c);
-    }
-    else
-    {
-        code = EINVAL;
-    }
-
-    return code;
+    tripm_free(msg);
 }
 
 _trip_stream_t *
 _trip_stream_new(_trip_router_t *r)
 {
-    trip_memory_t *m = r->mem;
-    return m->alloc(m->ud, sizeof(_trip_stream_t));
+    return tripm_alloc(sizeof(_trip_stream_t));
 }
 
 trip_stream_t *
 tripc_open_stream(trip_connection_t *_c, int sid, int opts)
 {
-    trip_connify(c, _c);
+    trip_toconn(c, _c);
 
     _trip_stream_t *s = _trip_stream_new(c->router);
 
@@ -118,7 +90,7 @@ _trip_set_error(_trip_router_t *r, int eval, const char *msg)
     size_t mlen = strlen(msg ? msg : "");
     r->error = eval;
     _trip_set_state(r, _TRIPR_STATE_ERROR);
-    r->errmsg = r->mem->alloc(r->mem->ud, mlen + 1);
+    r->errmsg = tripm_alloc(mlen + 1);
     if (r->errmsg)
     {
         memcpy(r->errmsg, msg, mlen);
@@ -169,11 +141,12 @@ _trip_listen(_trip_router_t *r, trip_socket_t fd, int events)
     trip_packet_t *p = r->pack;
     while (c)
     {
-        _tripbuf_t *buf = r->sendbuf;
+        size_t len;
+        void *buf;
         int code = _tripc_send(c, buf);
         if (!code)
         {
-            int error = p->send(p->ud, (tripbuf_t *)buf);
+            int error = p->send(p->ud, len, buf);
 
             if (error)
             {
@@ -201,30 +174,31 @@ _trip_listen(_trip_router_t *r, trip_socket_t fd, int events)
 void
 _trip_notify(_trip_router_t *r)
 {
+    r = r;
+    /** TODO iterate over connections
     size_t i;
     for (i = 0; i < r->concap; ++i)
     {
         _trip_connection_t *c = r->con[i];
-        _trip_connection_notify(c);
+        _tripc_notify(c);
     }
+    */
 }
 
 void
 _trip_close(_trip_router_t *r)
 {
-    trip_memory_t *m = r->mem;
-
+    /* TODO
     size_t i;
     for (i = 0; i < r->concap; ++i)
     {
         _trip_connection_t *c = r->con[i];
-        _trip_connection_close(c);
-        m->free(m->ud, c);
+        tripc_close((trip_connection_t *)c);
+        tripm_free(c);
     }
+    */
 
-    m->free(m->ud, r->con);
-    r->con = NULL;
-    r->concap = 0;
+    connmap_destroy(&r->con);
 }
 
 const char *
@@ -302,21 +276,7 @@ _trip_router_get_by_address(_trip_router_t *r, int src)
     return NULL;
 }
 
-_trip_connection_t *
-_trip_get_connection(_trip_router_t *r, uint32_t id)
-{
-    uint32_t index = id & r->conmask;
-    if (index < r->concap)
-    {
-        _trip_connection_t *c = r->con[index];
-        return c && (c->id == id) ? c : NULL;
-    }
-    else
-    {
-        return NULL;
-    }
-}
-
+#if 0
 /**
  * @brief Expand the connection array size.
  * @return Zero on success.
@@ -324,15 +284,13 @@ _trip_get_connection(_trip_router_t *r, uint32_t id)
 int
 _trip_expand_connections(_trip_router_t *r)
 {
-    trip_memory_t *m = r->mem;
-
     if (!r->con)
     {
-        r->con = m->alloc(m->ud, sizeof(_trip_connection_t *));
+        r->con = tripm_alloc(sizeof(_trip_connection_t *));
     
         if (r->con)
         {
-            r->con[0] = m->alloc(m->ud, sizeof(_trip_connection_t));
+            r->con[0] = tripm_alloc(sizeof(_trip_connection_t));
 
             if (r->con[0])
             {
@@ -343,7 +301,7 @@ _trip_expand_connections(_trip_router_t *r)
             }
             else
             {
-                m->free(m->ud, r->con);
+                tripm_free(r->con);
                 r->con = NULL;
                 return ENOMEM;
             }
@@ -359,7 +317,7 @@ _trip_expand_connections(_trip_router_t *r)
         {
             /* Expand the array. */
             r->concap <<= 1;
-            void *con = m->realloc(m->ud, r->con, r->concap * sizeof(_trip_connection_t *));
+            void *con = trip_realloc(r->con, r->concap * sizeof(_trip_connection_t *));
 
             if (con)
             {
@@ -382,90 +340,12 @@ _trip_expand_connections(_trip_router_t *r)
 
     return 0;
 }
-
-void
-_trip_con_nq(_trip_router_t *r, _trip_connection_t *c)
-{
-    if (r->confree)
-    {
-        c->next = r->confree;
-        r->confree = c;
-    }
-    else
-    {
-        c->next = NULL;
-        r->confree = c;
-    }
-}
+#endif
 
 _trip_connection_t *
-_trip_con_dq(_trip_router_t *r)
+_trip_new_connection()
 {
-    if (r->confree)
-    {
-        _trip_connection_t *c = r->confree;
-        r->confree = c->next;
-        return c;
-    }
-    else
-    {
-        return NULL;
-    }
-}
-
-/**
- * @brief Assumes that conempty points to the next available space.
- * @return Zero on success.
- */
-int
-_trip_alloc_connection(_trip_router_t *r)
-{
-    trip_memory_t *m = r->mem;
-    _trip_connection_t *c = m->alloc(m->ud, sizeof(_trip_connection_t));
-
-    if (c)
-    {
-        *r->conempty = c;
-        ++r->conlen;
-        _tripc_init(c, r, r->con - r->conempty);
-        ++r->conempty;
-        _trip_con_nq(r, c);
-        return 0;
-    }
-    else
-    {
-        return ENOMEM;
-    }
-}
-
-_trip_connection_t *
-_trip_new_connection(_trip_router_t *r)
-{
-    trip_memory_t *m = r->mem;
-    _trip_connection_t *c = NULL;
-
-    do
-    {
-        if (r->conlen >= r->concap)
-        {
-            if (_trip_expand_connections(r))
-            {
-                break;
-            }
-        }
-
-        if (!r->confree)
-        {
-            if (_trip_alloc_connection(r))
-            {
-                break;
-            }
-        }
-
-        c = _trip_con_dq(r);
-    } while (false);
-
-    return c;
+    return tripm_alloc(sizeof(_trip_connection_t));
 }
 
 static void
@@ -530,7 +410,7 @@ _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
 
         /* Unpack version and routing information. */
         uint16_t version = -1;
-        trip_route_t route;
+        _trip_route_t route;
         int end2 = trip_unpack(len - end, buf + end, "HVp",
                                &version,
                                &route.len,
@@ -606,10 +486,12 @@ _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
             return;
         }
 
-        _trip_connection_t *c = _trip_get_connection(r, prefix.id);
+        _trip_connection_t *c = connmap_get(&r->con, prefix.id);
         if (c)
         {
+            /* TODO
             _tripc_handle_segment(c, src, len - end, buf + end);
+            */
             // TODO handle error code
         }
         else
@@ -678,11 +560,13 @@ trip_ready(trip_router_t *_r)
     }
 }
 
+/*
+ * TODO what was the point of this?? callback for packet to use?
 void
 trip_resolve(trip_router_t *_r, trip_connection_t *_c, int err)
 {
     trip_torouter(r, _r);
-    trip_connify(c, _c);
+    trip_toconn(c, _c);
 
     if (!err)
     {
@@ -696,6 +580,7 @@ trip_resolve(trip_router_t *_r, trip_connection_t *_c, int err)
         _tripc_emptyq_add(r, c);
     }
 }
+*/
 
 void
 trip_watch(trip_router_t *_r, trip_socket_t fd, int events)
@@ -715,24 +600,19 @@ trip_unready(trip_router_t *_r, int err)
 }
 
 trip_router_t *
-trip_new(enum trip_preset preset, trip_memory_t *m, trip_packet_t *p)
+trip_new(enum trip_preset preset, trip_packet_t *p)
 {
-    if (!m)
-    {
-        m = trip_memory_default();
-    }
-
     if (!p)
     {
         
-        p = trip_packet_new_udp(m, NULL);
+        p = trip_packet_new_udp(NULL);
         if (!p)
         {
             return NULL;
         }
     }
 
-    _trip_router_t *r = m->alloc(m->ud, sizeof(_trip_router_t));
+    _trip_router_t *r = tripm_alloc(sizeof(_trip_router_t));
 
     do
     {
@@ -754,7 +634,6 @@ trip_new(enum trip_preset preset, trip_memory_t *m, trip_packet_t *p)
         }
 
         _trip_set_state(r, _TRIPR_STATE_START);
-        r->mem = m;
         r->pack = p;
         // TODO
     } while (false);
@@ -968,20 +847,18 @@ _trip_fd_events_to_epoll(int events)
 {
     int eout = 0;
 
-    events = events & (~TRIP_SOCK_EVENT_ADD);
-
     switch (events)
     {
-        case TRIP_SOCK_EVENT_REMOVE:
+        case TRIP_REMOVE:
             break;
-        case TRIP_SOCK_EVENT_IN:
-        case TRIP_SOCK_EVENT_OUT:
-        case TRIP_SOCK_EVENT_INOUT:
-            if (events != TRIP_SOCK_EVENT_IN)
+        case TRIP_IN:
+        case TRIP_OUT:
+        case TRIP_INOUT:
+            if (events != TRIP_IN)
             {
                 eout |= EPOLLOUT;
             }
-            if (events != TRIP_SOCK_EVENT_OUT)
+            if (events != TRIP_OUT)
             {
                 eout |= EPOLLIN;
             }
@@ -1005,9 +882,9 @@ _trip_watch_cb(trip_router_t *_r, int fd, int events)
     ev.events = _trip_fd_events_to_epoll(events);
     ev.data.fd = fd;
 
-    if (TRIP_SOCK_EVENT_REMOVE != events)
+    if (TRIP_REMOVE != events)
     {
-        if (TRIP_SOCK_EVENT_ADD & events)
+        if (TRIP_ADD & events)
         {
             c = epoll_ctl(w->efd, EPOLL_CTL_ADD, fd, &ev);
         }
@@ -1036,9 +913,9 @@ _trip_timeout_cb(trip_router_t *_r, int timeout)
 }
 
 _trip_wait_t *
-_trip_wait_new(trip_memory_t *mem)
+_trip_wait_new()
 {
-    _trip_wait_t *w = mem->alloc(mem->ud, sizeof(_trip_wait_t));
+    _trip_wait_t *w = tripm_alloc(sizeof(_trip_wait_t));
 
     w->efd = epoll_create1(0);
 
@@ -1055,7 +932,7 @@ _trip_wait_new(trip_memory_t *mem)
 
     if (c)
     {
-        mem->free(mem->ud, w);
+        tripm_free(w);
         w = NULL;
     }
 
@@ -1081,10 +958,9 @@ trip_run(trip_router_t *_r, int maxtimeout)
     {
         if (!r->wait)
         {
-            trip_memory_t *mem = r->mem;
             r->watch = _trip_watch_cb;
             r->timeout = _trip_timeout_cb;
-            r->wait = _trip_wait_new(mem);
+            r->wait = _trip_wait_new();
             if (!r->wait)
             {
                 r->watch = NULL;
@@ -1120,12 +996,12 @@ trip_run(trip_router_t *_r, int maxtimeout)
 
                 if (evs & EPOLLIN)
                 {
-                    events |= TRIP_SOCK_EVENT_IN;
+                    events |= TRIP_IN;
                 }
 
                 if (evs & EPOLLOUT)
                 {
-                    events |= TRIP_SOCK_EVENT_OUT;
+                    events |= TRIP_OUT;
                 }
 
                 c = trip_action(_r, fd, events);
@@ -1180,7 +1056,6 @@ trip_free(trip_router_t *_r)
 {
     trip_torouter(r, _r);
 
-    trip_memory_t *mem = r->mem;
-    mem->free(mem->ud, _r);
+    tripm_free(r);
 }
 

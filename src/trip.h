@@ -35,15 +35,13 @@ extern "C" {
 #include "connmap.h"
 
 
-#define trip_torouter(R, _R) _trip_router_t * R  = ((_trip_router_t *)(_R));
-
 typedef struct _trip_router_s _trip_router_t;
 typedef struct _trip_connection_s _trip_connection_t;
 typedef struct _trip_stream_s _trip_stream_t;
 typedef struct _trip_msg_s _trip_msg_t;
-typedef struct _tripbuf_s _tripbuf_t;
 typedef struct _trip_wait_s _trip_wait_t;
 typedef struct _trip_prefix_s _trip_prefix_t;
+typedef struct _trip_route_s _trip_route_t;
 typedef struct _trip_open_s _trip_open_t;
 
 enum _tripr_state
@@ -82,6 +80,8 @@ struct _trip_router_s
     trip_handle_watch_t *watch;
     trip_handle_timeout_t *timeout;
     trip_handle_connection_t *connection;
+    trip_handle_stream_t *stream;
+    trip_handle_message_t *message;
 
     /* Wait Data */
     _trip_wait_t *wait;
@@ -101,11 +101,8 @@ struct _trip_router_s
     /* Send Management */
     _trip_connection_t *sendbeg;
     _trip_connection_t *sendend;
-    _tripbuf_t *sendbuf;
-    _tripbuf_t *decryptbuf;
 
     /* Memory, Packet, and Encryption */
-    trip_memory_t *mem;
     trip_packet_t *pack;
     unsigned char *openpub;
     unsigned char *opensec;
@@ -138,9 +135,8 @@ struct _trip_router_s
     int timeout_notify;
 };
 
-trip_memory_t *
-_trip_get_mem(_trip_router_t *r);
-
+void
+_trip_set_state(_trip_router_t *r, enum _tripr_state state);
 
 #ifdef __cplusplus
 }

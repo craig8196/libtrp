@@ -51,7 +51,7 @@ streammap_add(streammap_t *map, _trip_stream_t *s)
 
     do
     {
-        if (!free)
+        if (!map->free)
         {
             int max = map->cap;
 

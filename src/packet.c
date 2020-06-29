@@ -20,6 +20,7 @@
  * SOFTWARE.
  ******************************************************************************/
 #include "libtrp.h"
+#include "libtrp_memory.h"
 
 #include <errno.h>
 #include <string.h>
@@ -30,7 +31,6 @@
 
 typedef struct _trip_udp_context_s
 {
-    trip_memory_t *m;
     char *info;
     int fd;
 } _trip_udp_context_t;
@@ -144,19 +144,14 @@ _trip_udp_bind(void *_c)
 }
 
 trip_packet_t *
-trip_packet_new_udp(trip_memory_t *m, const unsigned char *info)
+trip_packet_new_udp(const unsigned char *info)
 {
-    if (!m)
-    {
-        m = trip_memory_default();
-    }
-
     int e = 0;
     trip_packet_t *p = NULL;
 
     do
     {
-        p = (trip_packet_t *)m->alloc(m->ud, sizeof(trip_packet_t *));
+        p = (trip_packet_t *)tripm_alloc(sizeof(trip_packet_t *));
 
         if (!p)
         {
@@ -170,27 +165,26 @@ trip_packet_new_udp(trip_memory_t *m, const unsigned char *info)
         }
 
         size_t len = strlen((const char *)info);
-        char *s = m->alloc(m->ud, len + 1);
+        char *s = tripm_alloc(len + 1);
         if (!s)
         {
             e = ENOMEM;
-            m->free(m->ud, p);
+            tripm_free(p);
             break;
         }
         
         memcpy(s, info, len + 1);
 
-        _trip_udp_context_t *c = m->alloc(m->ud, sizeof(_trip_udp_context_t));
+        _trip_udp_context_t *c = tripm_alloc(sizeof(_trip_udp_context_t));
 
         if (!c)
         {
             e = ENOMEM;
-            m->free(m->ud, s);
-            m->free(m->ud, p);
+            tripm_free(s);
+            tripm_free(p);
             break;
         }
 
-        c->m = m;
         c->info = s;
         c->fd = 0;
         p->ud = c;
@@ -202,7 +196,7 @@ trip_packet_new_udp(trip_memory_t *m, const unsigned char *info)
     {
         if (p)
         {
-            m->free(m->ud, p);
+            tripm_free(p);
         }
         p = NULL;
     }

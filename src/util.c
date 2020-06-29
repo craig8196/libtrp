@@ -2,7 +2,7 @@
 #include "util.h"
 
 
-static const int MAX_SIZE = 1 << (sizeof(int) * 8) - 2;
+static const int MAX_SIZE = 1 << ((sizeof(int) * 8) - 2);
 
 int
 near_pwr2(int n)

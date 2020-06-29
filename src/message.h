@@ -30,6 +30,7 @@
 extern "C" {
 #endif
 
+#include <stdlib.h>
 
 #include "core.h"
 

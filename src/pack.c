@@ -33,7 +33,7 @@
 #include <stdio.h>
 
 #include "libtrp.h"
-#include "_libtrp.h"
+#include "crypto.h"
 
 #define TRIPPACK_MAX_VAR (sizeof(uint32_t))
 
@@ -232,7 +232,7 @@ trip_pack_len(char *format)
                 len += _TRIP_NONCE;
                 break;
             case 'k':
-                len += TRIP_KP_PUB;
+                len += TRIP_KEY_PUB;
                 break;
             default:
                 break;
@@ -438,15 +438,15 @@ trip_pack(int cap, unsigned char *buf, char *format, ...)
                 break;
 
             case 'k':
-                size += TRIP_KP_PUB;
+                size += TRIP_KEY_PUB;
                 if (size > cap)
                 {
                     size = -1;
                     goto _trip_pack_end;
                 }
                 raw = va_arg(ap, unsigned char *);
-                memcpy(buf, raw, TRIP_KP_PUB);
-                buf += TRIP_KP_PUB;
+                memcpy(buf, raw, TRIP_KEY_PUB);
+                buf += TRIP_KEY_PUB;
                 break;
 
             default:
@@ -652,15 +652,15 @@ trip_unpack(int blen, unsigned char *buf, char *format, ...)
                 break;
 
             case 'k':
-                len += TRIP_KP_PUB;
+                len += TRIP_KEY_PUB;
                 if (len > blen)
                 {
                     len = -1;
                     goto _trip_unpack_end;
                 }
                 raw = va_arg(ap, unsigned char *);
-                memcpy(raw, buf, TRIP_KP_PUB);
-                buf += TRIP_KP_PUB;
+                memcpy(raw, buf, TRIP_KEY_PUB);
+                buf += TRIP_KEY_PUB;
                 break;
 
             default:

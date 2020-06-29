@@ -52,7 +52,6 @@ struct _trip_stream_s
 {
     /* Frequently Accessed */
     void *ud;
-    trip_handle_message_t *message_cb;
     _trip_connection_t *connection;
 
     int id;

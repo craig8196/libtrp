@@ -122,7 +122,11 @@ _trips_msg_remove(_trip_stream_t *s, _trip_msg_t *mess)
 void
 _trips_message(_trip_stream_t *s, int len, unsigned char *buf)
 {
-    s->message_cb((trip_stream_t *)s, TRIPM_RECV, (size_t)len, buf);
+    // TODO
+    s = s;
+    len = len;
+    buf = buf;
+    //s->message_cb((trip_stream_t *)s, TRIPM_RECV, (size_t)len, buf);
 }
 
 /**
@@ -133,7 +137,7 @@ _trips_done_message(_trip_stream_t *s, _trip_msg_t *m)
 {
     _trips_msg_remove(s, m);
 
-    s->message_cb((trip_stream_t *)s, TRIPM_SENT, m->len, m->buf);
+    //s->message_cb((trip_stream_t *)s, TRIPM_SENT, m->len, m->buf);
     _tripc_free_message(s->connection, m);
 }
 
@@ -151,7 +155,7 @@ _trips_destroy(_trip_stream_t *s)
     {
         n = m->next;
 
-        s->message_cb((trip_stream_t *)s, TRIPM_KILL, m->len, m->buf);
+        //s->message_cb((trip_stream_t *)s, TRIPM_KILL, m->len, m->buf);
         _tripc_free_message(s->connection, m);
 
         m = n;

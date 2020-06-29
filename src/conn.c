@@ -25,6 +25,8 @@
  * @brief Core code for handling routers, connections, and streams.
  */
 #include "libtrp.h"
+#include "libtrp_memory.h"
+
 #include "trip.h"
 #include "conn.h"
 #include "stream.h"
@@ -39,6 +41,8 @@
 void
 _tripc_close_stream(_trip_connection_t *c, _trip_stream_t *s)
 {
+    c = c; // TODO
+    s = s; // TODO
 }
 
 int
@@ -72,8 +76,9 @@ _tripc_next_message_id(_trip_connection_t *c)
 }
 
 int
-_tripc_read(_trip_connection_t *c, _tripbuf_t *b)
+_tripc_read(_trip_connection_t *c, size_t len, void *buf)
 {
+    len = len; buf = buf;
     switch (c->state)
     {
         case _TRIPC_STATE_START:
@@ -179,11 +184,14 @@ _tripc_timeout(_trip_connection_t *c)
             }
             break;
     }
+
+    return c->error;
 }
 
 int
-_tripc_send(_trip_connection_t *c, _tripbuf_t *b)
+_tripc_send(_trip_connection_t *c, size_t len, void *buf)
 {
+    len = len; buf = buf;
     switch (c->state)
     {
         case _TRIPC_STATE_START:
@@ -232,6 +240,8 @@ _tripc_send(_trip_connection_t *c, _tripbuf_t *b)
             }
             break;
     }
+
+    return c->error;
 }
 
 void
@@ -306,18 +316,11 @@ _tripc_flag_open_seq(_trip_connection_t *c, uint32_t seq)
 int
 _tripc_seg(_trip_connection_t *c, unsigned char control, int len, unsigned char *buf)
 {
-}
-
-void
-_tripc_emptyq_add(_trip_router_t *r, _trip_connection_t *c)
-{
-    if (r->confree)
-    {
-        r->confree->next = c;
-    }
-
-    r->confree = c;
-    c->next = NULL;
+    c = c;
+    control = control;
+    len = len;
+    buf = buf;
+    return -1;
 }
 
 /* CONNECTION INTERNAL */
@@ -360,7 +363,7 @@ _tripc_send_add(_trip_connection_t *c, _trip_msg_t *m)
 {
     if (c->sendend[m->priority])
     {
-        c->sendend[m->priority]->sendnext = m;
+        c->sendend[m->priority]->next = m;
         c->sendend[m->priority] = m;
     }
     else
@@ -369,7 +372,7 @@ _tripc_send_add(_trip_connection_t *c, _trip_msg_t *m)
         c->sendend[m->priority] = m;
     }
 
-    m->sendnext = NULL;
+    m->next = NULL;
 }
 
 /**
@@ -417,10 +420,10 @@ _tripc_send_clear(_trip_connection_t *c, _trip_msg_t *m)
         }
         else
         {
-            c->sendbeg[m->priority] = m->sendnext;
+            c->sendbeg[m->priority] = m->next;
         }
 
-        m->sendnext = NULL;
+        m->next = NULL;
     }
 
 }
@@ -461,9 +464,10 @@ _tripc_start(_trip_connection_t *c, bool isincoming)
 /**
  * @return Status code.
  */
-int
+enum trip_connection_status
 tripc_status(trip_connection_t *c)
 {
+    c = c;// TODO
     return TRIPC_STATUS_ERROR;
 }
 
@@ -473,6 +477,9 @@ tripc_status(trip_connection_t *c)
 void
 tripc_close(trip_connection_t *c)
 {
+    // TODO
+    c = c;
+    //trip_toconn(c, _c);
 }
 
 /**
@@ -481,19 +488,8 @@ tripc_close(trip_connection_t *c)
 int
 tripc_next_stream(trip_connection_t *_c)
 {
-    if (!c->streams)
-    {
-        return 0;
-    }
-    else
-    {
-        int i;
-        int len = c->streamscap;
-        for (i = 0; i < len; ++i)
-        {
-
-        }
-    }
+    _c = _c; // TODO
+    return 0; // TODO
 }
 
 /**
@@ -504,36 +500,21 @@ tripc_open_stream(trip_connection_t *_c, int sid, int options)
 {
     trip_toconn(c, _c);
 
-    trip_memory_t *m = _trip_get_mem(c->router);
-    _trip_stream_t *s = m->alloc(m->ud, sizeof(_trip_stream_t));
+    _trip_stream_t *s = tripm_alloc(sizeof(_trip_stream_t));
 
-    if (s)
+    do
     {
-        s->ud = NULL;
-        s->connection = c;
-        s->id = sid;
-        s->flags = options & _TRIPS_OPT_PUBMASK;
-        s->listbeg = NULL;
-        s->listend = NULL;
-
-        if (!c->streams)
+        if (s)
         {
-            c->streams = m->alloc(m->ud, sizeof(_trip_stream_t *));
+            s->ud = NULL;
+            s->connection = c;
+            s->id = sid;
+            s->flags = options & _TRIPS_OPT_PUBMASK;
+            s->listbeg = NULL;
+            s->listend = NULL;
+            streammap_add(&c->streams, s);
         }
-        else if (c->streamslen >= c->streamscap)
-        {
-        }
-
-        if (!c->streams)
-        {
-            m->free(m->ud, s);
-            s = NULL;
-            break;
-        }
-
-        c->streams
-        // TODO check that connection has list available otherwise stall and place on wait queue
-    }
+    } while (false);
 
     return (trip_stream_t *)s;
 }
