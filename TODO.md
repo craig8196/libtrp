@@ -1,4 +1,6 @@
 
+- [ ] https://man7.org/linux/man-pages/man2/sendmmsg.2.html
+- [ ] https://blog.cloudflare.com/how-to-receive-a-million-packets/
 - [x] Test memory interface.
 - [x] Create test framework from ss?
 - [x] Setup for .so only to start, static library requires special setup for libsodium.
@@ -8,8 +10,10 @@
 
 - [ ] Non-UDP packet framework just to connect two routers "0" or "1".
 - [ ] Use 'data' instead of 'ud'.
+- [ ] Add error handlers for generic error handling?
 
 - [x] Connection data structure, resizable array.
+- [ ] Add connection data structure to router.
 - [x] Stream data structure, resizable array.
 - [x] Message Descriptor structure.
 - [x] Message structure simplification with message descriptor.
