@@ -37,7 +37,6 @@ extern "C" {
 #include <sodium.h>
 
 #include "libtrp_handles.h"
-#include "libtrp_memory.h"
 #include "libtrp_packet.h"
 
 
@@ -105,7 +104,7 @@ enum trip_router_opt
 };
 
 trip_router_t *
-trip_new(enum trip_preset preset, trip_memory_t *m, trip_packet_t *p);
+trip_new(enum trip_preset preset, trip_packet_t *p);
 void
 trip_free(trip_router_t *r);
 

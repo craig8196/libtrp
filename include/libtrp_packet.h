@@ -66,7 +66,6 @@ typedef struct trip_packet_s
     int *fds;
     int *fde;
     size_t fdlen;
-    trip_memory_t *mem;
     trip_packet_bind_t *bind;
     trip_packet_resolve_t *resolve;
     trip_packet_send_t *send;
@@ -78,7 +77,7 @@ typedef struct trip_packet_s
 } trip_packet_t;
 
 trip_packet_t *
-trip_packet_new_udp(trip_memory_t *m, const unsigned char *info);
+trip_packet_new_udp(const unsigned char *info);
 void
 trip_packet_free_udp(trip_packet_t *);
 

@@ -30,27 +30,11 @@
 extern "C" {
 #endif
 
-#include <stdbool.h>
 #include <stdlib.h>
 
-
-
-/* TRiP Memory Interface */
-typedef void *trip_memory_alloc_t(void *, size_t);
-typedef void *trip_memory_realloc_t(void *, void *, size_t);
-typedef void trip_memory_free_t(void *, void *);
-
-typedef struct trip_memory_s
-{
-    void *ud;
-    trip_memory_alloc_t *alloc;
-    trip_memory_realloc_t *realloc;
-    trip_memory_free_t *free;
-} trip_memory_t;
-
-trip_memory_t *
-trip_memory_default(void);
-
+#define tripm_alloc malloc
+#define tripm_realloc realloc
+#define tripm_free free
 
 #ifdef __cplusplus
 }
