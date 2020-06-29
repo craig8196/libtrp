@@ -39,17 +39,9 @@ typedef struct
     uv_loop_t *loop;
 
     trip_router_t *server;
-    trip_router_t *client;
     trip_connection_t *conn;
 
     uv_timer_t server_timeout;
-    uv_timer_t client_timeout;
-
-    unsigned char openpub[TRIP_KP_PUB];
-    unsigned char opensec[TRIP_KP_SEC];
-
-    unsigned char signpub[TRIP_SIGN_PUB];
-    unsigned char signsec[TRIP_SIGN_SEC];
 } mydata_t;
 
 /* CALLBACKS */
@@ -115,30 +107,6 @@ server_handle_message(trip_stream_t *s, size_t len, const unsigned char *buf)
     trips_send(stream, len, buf);
 }
 
-void
-client_handle_stream(trip_stream_t *s)
-{
-    switch (trips_status(c))
-    {
-        case TRIPS_STATUS_OPEN:
-            break;
-        case TRIPS_STATUS_CLOSED:
-            break;
-        case TRIPS_STATUS_KILLED:
-            break;
-        case TRIPS_STATUS_ERROR:
-            break;
-        default:
-            abort();
-    }
-}
-
-static void
-client_handle_message(trip_stream_t *s, size_t len, const unsigned char *buf)
-{
-    printf("Client received message: %s\n", (const char *)buf);
-}
-
 /* TIMEOUT HANDLING */
 
 static void on_timeout(uv_timer_t *req)
@@ -151,7 +119,7 @@ static int
 router_handle_timeout(trip_router_t *router, long ms)
 {
     mydata_t *data = router->data;
-    uv_timer_t *t = router == data->server ? &data->server_timeout : &data->client_timeout;
+    uv_timer_t *t = &data->server_timeout;
     t->data = router;
 
     if (ms < 0)
@@ -258,12 +226,14 @@ router_handle_watch(trip_router_t *router, trip_socket_t s, int action, void *sp
 
 /* SETUP */
 
+/*
 static void
 keys_init(mydata_t *data)
 {
     trip_kp(data->openpub, data->opensec);
     trip_sign_kp(data->signpub, data->signsec);
 }
+*/
 
 static void
 server_init(mydata_t *data)
@@ -287,35 +257,6 @@ server_destroy(mydata_t *data)
     trip_free(server);
 }
 
-static void
-client_init(mydata_t *data)
-{
-    trip_router_t *client =  = data->client = trip_new(TRIP_PRESET_CLIENT);
-    trip_setopt(client, TRIPOPT_USER_DATA, data);
-    trip_setopt(client, TRIPOPT_WATCH_CB, router_handle_watch);
-    trip_setopt(client, TRIPOPT_TIMEOUT_CB, router_handle_timeout);
-    trip_setopt(client, TRIPOPT_CONNECTION_CB, client_handle_connection);
-    trip_setopt(client, TRIPOPT_STREAM_CB, client_handle_stream);
-    trip_setopt(client, TRIPOPT_MESSAGE_CB, client_handle_message);
-    trip_start(client);
-
-    const char *location = "localhost";
-    size_t len = strlen(location);
-    trip_connection_t *conn = NULL;
-    conn = trip_open_connection(client);
-    conn->data = data;
-    conn->locationlen = len;
-    conn->location = location;
-    conn->key = data->openpub;
-    conn->sign = data->signpub;
-}
-
-static void
-client_destroy(mydata_t *data)
-{
-    trip_free(server);
-}
-
 int main(int argc, char **argv)
 {
     mydata_t data = { 0 };
@@ -323,15 +264,10 @@ int main(int argc, char **argv)
     data.loop = uv_default_loop();
 
     uv_timer_init(data.loop, &data.server_timeout);
-    uv_timer_init(data.loop, &data.client_timeout);
 
-    keys_init(&data);
     server_init(&data);
-    client_init(&data);
-  
+    // TODO start the server
     uv_run(loop, UV_RUN_DEFAULT);
-  
-    client_destroy(&data);
     server_destroy(&data);
   
     return 0;
