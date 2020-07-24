@@ -33,6 +33,7 @@ extern "C" {
 
 #include "core.h"
 #include "connmap.h"
+#include "sendq.h"
 
 
 typedef struct _trip_router_s _trip_router_t;
@@ -85,7 +86,7 @@ struct _trip_router_s
 
     /* Wait Data */
     _trip_wait_t *wait;
-    int wtimeout;
+    int wtimeout;// TODO is this needed? there is a timeout field in wait
 
     /* State */
     enum _tripr_state state;
@@ -99,17 +100,19 @@ struct _trip_router_s
     connmap_t con;
 
     /* Send Management */
-    _trip_connection_t *sendbeg;
-    _trip_connection_t *sendend;
+    sendq_t sendq;
 
-    /* Memory, Packet, and Encryption */
-    trip_packet_t *pack;
+    /* Packet Interface */
+    trip_packet_t *packet;
+
+    /* Encryption */
     unsigned char *openpub;
     unsigned char *opensec;
     unsigned char *signpub;
     unsigned char *signsec;
 
     /* Limits */
+    //limits_t lim; // TODO move below to limits structure
     uint32_t max_mem;
     uint32_t max_packet_mem;
     uint32_t max_conn;// TODO use uppermost bits on max_conn for connection ID randomization??
@@ -128,6 +131,7 @@ struct _trip_router_s
     bool allow_plain_seg;
     bool allow_plain_sig;
 
+    // TODO needed? used?
     int timeout_bind;
     int timeout_data;
     int timeout_close;

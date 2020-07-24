@@ -68,20 +68,28 @@ enum trip_socket_event
 
 
 /* TRiP Router Interface */
-typedef void trip_handle_watch_t(trip_router_t *, trip_socket_t, int);
+typedef void trip_handle_watch_t(trip_router_t *, trip_socket_t, int, void *);
 typedef void trip_handle_timeout_t(trip_router_t *, int);
 
-typedef void trip_handle_screen_t(void *);
+typedef struct trip_screen_s
+{
+    bool allow;
+} trip_screen_t;
+
+typedef void trip_handle_screen_t(trip_screen_t *);
 typedef void trip_handle_connection_t(trip_connection_t *);
 typedef void trip_handle_stream_t(trip_stream_t *, bool open);
-enum trip_message_code
+enum trip_message_status
 {
+    /* Receiving message. */
     TRIPM_RECV,
+
+    /* Message sent (confirmed if reliable). */
     TRIPM_SENT,
-    // Message not fully sent or received on other end.
+    /* Message not fully sent or received on other end. */
     TRIPM_KILL,
 };
-typedef void trip_handle_message_t(trip_stream_t *, enum trip_message_code, size_t, unsigned char *);
+typedef void trip_handle_message_t(trip_stream_t *, enum trip_message_status, size_t, unsigned char *);
 
 enum trip_preset
 {
@@ -104,7 +112,7 @@ enum trip_router_opt
 };
 
 trip_router_t *
-trip_new(enum trip_preset preset, trip_packet_t *p);
+trip_new(enum trip_preset preset);
 void
 trip_free(trip_router_t *r);
 
@@ -116,6 +124,8 @@ trip_errmsg(trip_router_t *_r);
 
 int
 trip_action(trip_router_t *, trip_socket_t, int);
+void
+trip_assign(trip_router_t *, trip_socket_t, void *);
 
 int
 trip_start(trip_router_t *r);
@@ -124,8 +134,8 @@ trip_run(trip_router_t *r, int timeout);
 int
 trip_stop(trip_router_t *r);
 
-trip_connection_t *
-trip_open_connection(trip_router_t *r);
+void
+trip_open_connection(trip_router_t *r, void *ud, size_t ilen, const unsigned char *info);
 
 
 /* TRiP Connection Interface */
@@ -158,10 +168,14 @@ enum trip_stream_status
 };
 enum trip_stream_status
 trips_status(trip_stream_t *s);
+int
+trips_id(trip_stream_t *s);
+int
+trips_type(trip_stream_t *s);
 void
 trips_close(trip_stream_t *s);
 int
-trips_send(trip_stream_t *s, size_t, unsigned char *);
+trips_send(trip_stream_t *s, size_t, const unsigned char *);
 
 
 #ifdef __cplusplus

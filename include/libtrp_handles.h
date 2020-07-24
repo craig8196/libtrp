@@ -32,12 +32,21 @@ extern "C" {
 
 
 /* TRiP Forward-Declared Handles */
-typedef struct trip_router_handle_s     { void *ud; }
-        trip_router_t;
-typedef struct trip_connection_handle_s { void *ud; }
-        trip_connection_t;
-typedef struct trip_stream_handle_s     { void *ud; }
-        trip_stream_t;
+typedef struct trip_router_handle_s
+{
+    void *data;
+} trip_router_t;
+
+typedef struct trip_connection_handle_s
+{
+    void *data;
+} trip_connection_t;
+
+typedef struct trip_stream_handle_s
+{
+    void *data;
+    trip_connection_t *connection;
+} trip_stream_t;
 
 typedef int trip_socket_t;
 

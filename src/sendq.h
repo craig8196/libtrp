@@ -20,40 +20,44 @@
  * SOFTWARE.
  ******************************************************************************/
 /**
- * @file message.h
+ * @file sendq.h
  * @author Craig Jacobson
- * @brief Message definition.
+ * @brief Queue for getting the next connection to send from.
  */
-#ifndef _LIBTRP_MESSAGE_H_
-#define _LIBTRP_MESSAGE_H_
+#ifndef _LIBTRP_SEND_QUEUE_H_
+#define _LIBTRP_SEND_QUEUE_H_
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#include <stdlib.h>
 
-#include "core.h"
+#include <stdint.h>
+
+#include "conn.h"
 
 
-struct _trip_msg_s
+/**
+ * Simple queue for connections that need to send messages.
+ */
+typedef struct sendq_s
 {
-    _trip_stream_t *stream;
-    size_t len; // length, don't change
-    const unsigned char *buf; // data, don't change
+    _trip_connection_t *head;
+    _trip_connection_t *tail;
+} sendq_t;
 
-    uint32_t id;// id or index in zone
-    int zone;// 0 or 1, indicates which segment zone this message falls
-    int priority;// 0 high 1 low
-    _trip_part_t *parts;// list of parts to send
-
-    /* Messages are stored in a list.
-     */
-    _trip_msg_t *next;
-};
+void
+sendq_init(sendq_t *);
+void
+sendq_destroy(sendq_t *q);
+_trip_connection_t *
+sendq_dq(sendq_t *q);
+void
+sendq_nq(sendq_t *q, _trip_connection_t *c);
 
 
 #ifdef __cplusplus
 }
 #endif
-#endif /* _LIBTRP_MESSAGE_H_ */
+#endif /* _LIBTRP_SEND_QUEUE_H_ */
+
 

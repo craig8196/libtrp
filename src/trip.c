@@ -34,55 +34,13 @@
 #include "time.h"
 #include "protocol.h"
 #include "pack.h"
+#include "sendq.h"
 
 #include <errno.h>
 #include <stdarg.h>
 #include <string.h>
 #include <sys/epoll.h>
 
-
-_trip_msg_t *
-_trip_msg_new()
-{
-    // TODO check internal queue first
-    return tripm_alloc(sizeof(_trip_msg_t));
-}
-
-void
-_trip_msg_free(_trip_msg_t *msg)
-{
-    // TODO enqueue
-    tripm_free(msg);
-}
-
-_trip_stream_t *
-_trip_stream_new(_trip_router_t *r)
-{
-    return tripm_alloc(sizeof(_trip_stream_t));
-}
-
-trip_stream_t *
-tripc_open_stream(trip_connection_t *_c, int sid, int opts)
-{
-    trip_toconn(c, _c);
-
-    _trip_stream_t *s = _trip_stream_new(c->router);
-
-    if (s)
-    {
-        s->ud = NULL;
-        s->connection = c;
-        s->id = sid;
-        s->flags = opts & _TRIPS_OPT_PUBMASK;
-        s->listbeg = NULL;
-        s->listend = NULL;
-
-        // TODO check that connection has list available otherwise stall and place on wait queue
-
-    }
-
-    return (trip_stream_t *)s;
-}
 
 void
 _trip_set_error(_trip_router_t *r, int eval, const char *msg)
@@ -98,52 +56,21 @@ _trip_set_error(_trip_router_t *r, int eval, const char *msg)
     }
 }
 
-_trip_connection_t *
-_trip_send_dq(_trip_router_t *r)
-{
-    _trip_connection_t *c = r->sendbeg;
-
-    if (c)
-    {
-        r->sendbeg = c->next;
-        if (!r->sendbeg)
-        {
-            r->sendend = NULL;
-        }
-    }
-
-    return c;
-}
-
-void
-_trip_send_nq(_trip_router_t *r, _trip_connection_t *c)
-{
-    if (r->sendend)
-    {
-        r->sendend->next = c;
-        r->sendend = c;
-    }
-    else
-    {
-        r->sendbeg = c;
-        r->sendend = c;
-    }
-}
-
 void
 _trip_listen(_trip_router_t *r, trip_socket_t fd, int events)
 {
     /* Let the packet interface read. */
-    r->pack->read(r->pack->ud, fd, events, r->max_packet_read_count);
+    r->packet->read(r->packet->ud, fd, events, r->max_packet_read_count);
 
     /* Rate limit number of send. */
-    _trip_connection_t *c = _trip_send_dq(r);
-    trip_packet_t *p = r->pack;
+    _trip_connection_t *c = sendq_dq(&r->sendq);
+    trip_packet_t *p = r->packet;
     while (c)
     {
-        size_t len;
-        void *buf;
-        int code = _tripc_send(c, buf);
+        // TODO get actual buffer? i think _tripc_send is populating the buffer
+        size_t len = 0;
+        void *buf = NULL;
+        int code = _tripc_send(c, len, buf);
         if (!code)
         {
             int error = p->send(p->ud, len, buf);
@@ -154,7 +81,7 @@ _trip_listen(_trip_router_t *r, trip_socket_t fd, int events)
                 break;
             }
 
-            _trip_send_nq(r, c);
+            sendq_nq(&r->sendq, c);
         }
         else
         {
@@ -162,7 +89,7 @@ _trip_listen(_trip_router_t *r, trip_socket_t fd, int events)
             /* Don't re-enqueue. */
         }
 
-        c = _trip_send_dq(r);
+        c = sendq_dq(&r->sendq);
     }
 
     if (TRIP_SOCKET_TIMEOUT == fd)
@@ -262,17 +189,27 @@ trip_setopt(trip_router_t *_r, enum trip_router_opt opt, ...)
 static void
 _trip_router_reject(_trip_router_t *r, int src, int reason)
 {
+    // TODO figure out how we handle rejections
+    r = r;
+    src = src;
+    reason = reason;
 }
 
 static bool
 _trip_router_is_reported(_trip_router_t *r, int src)
 {
+    // TODO check data structure for reported source
+    r = r;
+    src = src;
     return false;
 }
 
 _trip_connection_t *
 _trip_router_get_by_address(_trip_router_t *r, int src)
 {
+    // TODO get connection based on source
+    r = r;
+    src = src;
     return NULL;
 }
 
@@ -587,7 +524,7 @@ trip_watch(trip_router_t *_r, trip_socket_t fd, int events)
 {
     trip_torouter(r, _r);
 
-    r->watch(_r, fd, events);
+    r->watch(_r, fd, events, NULL); // TODO
 }
 
 void
@@ -600,8 +537,10 @@ trip_unready(trip_router_t *_r, int err)
 }
 
 trip_router_t *
-trip_new(enum trip_preset preset, trip_packet_t *p)
+trip_new(enum trip_preset preset)
 {
+    /*
+     * TODO move to setopt function
     if (!p)
     {
         
@@ -611,6 +550,8 @@ trip_new(enum trip_preset preset, trip_packet_t *p)
             return NULL;
         }
     }
+        r->pack = p;
+    */
 
     _trip_router_t *r = tripm_alloc(sizeof(_trip_router_t));
 
@@ -628,18 +569,37 @@ trip_new(enum trip_preset preset, trip_packet_t *p)
                 break;
             case TRIP_PRESET_CLIENT:
                 break;
+            case TRIP_PRESET_MULTICLIENT:
+                break;
             default:
                 (*r) = (const _trip_router_t){ 0 };
                 break;
         }
 
         _trip_set_state(r, _TRIPR_STATE_START);
-        r->pack = p;
-        // TODO
+        // TODO set other settings
     } while (false);
 
 
     return (trip_router_t *)r;
+}
+
+int
+_trip_fill_missing(_trip_router_t *r)
+{
+    if (!r->packet)
+    {
+        r->packet = trip_packet_new_udp(NULL);
+
+        if (!r->packet)
+        {
+            _trip_set_error(r, EINVAL,
+                "Unable to initialize default UDP packet interface.");
+            return EINVAL;
+        }
+    }
+    // TODO check that we have a packet interface
+    return 0;
 }
 
 int
@@ -669,6 +629,13 @@ _trip_verify(_trip_router_t *r)
     return code;
 }
 
+/**
+ * Perform any needed actions on timeout or socket event.
+ * Called by trip_start to get the ball rolling.
+ * Only a limited number of actions will take place to help prevent starvation
+ * of other resources.
+ * @return Errno; get string message with trip_errmsg.
+ */
 int
 trip_action(trip_router_t *_r, trip_socket_t fd, int events)
 {
@@ -699,16 +666,22 @@ trip_action(trip_router_t *_r, trip_socket_t fd, int events)
                     break;
                 }
 
+                if (_trip_fill_missing(r))
+                {
+                    /* Error already set. */
+                    break;
+                }
+
                 if (_trip_verify(r))
                 {
                     /* Error already set. */
                     break;
                 }
 
-                r->pack->router = _r;
+                r->packet->router = _r;
 
                 _trip_set_state(r, _TRIPR_STATE_BIND);
-                r->pack->bind(r->pack->ud);
+                r->packet->bind(r->packet->ud);
 
                 if (r->error)
                 {
@@ -822,11 +795,16 @@ trip_open_connection(trip_router_t *_r, void *ud, size_t ilen,
 {
     trip_torouter(r, _r);
 
+    // TODO
+    ud = ud;
+    ilen = ilen;
+    info = info;
+
     if (r->allow_out)
     {
         _trip_connection_t *c = _trip_new_connection(r);
         // TODO acquire connection and ID...
-        r->pack->resolve(r->pack->ud, (trip_connection_t *)c);
+        r->packet->resolve(r->packet->ud, (trip_connection_t *)c);
     }
     else
     {
@@ -838,7 +816,6 @@ trip_open_connection(trip_router_t *_r, void *ud, size_t ilen,
 int
 trip_start(trip_router_t *_r)
 {
-    trip_torouter(r, _r);
     return trip_action(_r, TRIP_SOCKET_TIMEOUT, 0);
 }
 
@@ -871,10 +848,13 @@ _trip_fd_events_to_epoll(int events)
 }
 
 void
-_trip_watch_cb(trip_router_t *_r, int fd, int events)
+_trip_watch_cb(trip_router_t *_r, int fd, int events, void *data)
 {
     trip_torouter(r, _r);
     _trip_wait_t *w = r->wait;
+
+    // TODO
+    data = data;
 
     int c;
     struct epoll_event ev = { 0 };
@@ -884,6 +864,8 @@ _trip_watch_cb(trip_router_t *_r, int fd, int events)
 
     if (TRIP_REMOVE != events)
     {
+        // TODO
+        /*
         if (TRIP_ADD & events)
         {
             c = epoll_ctl(w->efd, EPOLL_CTL_ADD, fd, &ev);
@@ -892,6 +874,7 @@ _trip_watch_cb(trip_router_t *_r, int fd, int events)
         {
             c = epoll_ctl(w->efd, EPOLL_CTL_MOD, fd, &ev);
         }
+        */
     }
     else
     {
@@ -937,14 +920,6 @@ _trip_wait_new()
     }
 
     return w;
-}
-
-int
-_trip_timeout(_trip_router_t *r, uint64_t now, uint64_t maxdeadline)
-{
-    // TODO
-
-    return 1;
 }
 
 int
@@ -1024,7 +999,7 @@ trip_run(trip_router_t *_r, int maxtimeout)
                 break;
             }
 
-            timeout = _trip_timeout(r, now, deadline);
+            timeout = (int)(deadline - now);
         }
     } while (false);
 

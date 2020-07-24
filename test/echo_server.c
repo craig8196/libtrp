@@ -23,11 +23,13 @@
  * @file test_echo.h
  * @author Craig Jacobson
  * @brief Setup an echo server and client to demonstrate libtrp.
+ *
+ * The interface to the TRIP router is similar to libcurl multi interface.
  */
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <uv.h>
-#include <curl/curl.h>
 
 #include "libtrp.h"
 
@@ -37,17 +39,18 @@
 typedef struct
 {
     uv_loop_t *loop;
-
     trip_router_t *server;
-    trip_connection_t *conn;
-
-    uv_timer_t server_timeout;
+    uv_timer_t timeout; /* server timeout */
 } mydata_t;
 
 /* CALLBACKS */
 
-/*
+/**
+ * Determine if we are going to accept this connection.
+ * Since we just have a private echo server we'll accept any connection request.
+ *
  * Possible information:
+ * Allow flag to signal that this source is valid.
  * Routing.
  * Source address.
  * Source address binary.
@@ -61,6 +64,9 @@ server_handle_screen(trip_screen_t *screen)
     screen->allow = true;
 }
 
+/**
+ * Handle connection event.
+ */
 void
 server_handle_connection(trip_connection_t *c)
 {
@@ -79,10 +85,13 @@ server_handle_connection(trip_connection_t *c)
     }
 }
 
+/**
+ * Handle stream event.
+ */
 void
 server_handle_stream(trip_stream_t *s)
 {
-    switch (trips_status(c))
+    switch (trips_status(s))
     {
         case TRIPS_STATUS_OPEN:
             break;
@@ -97,42 +106,89 @@ server_handle_stream(trip_stream_t *s)
     }
 }
 
+/**
+ * Handle message event on stream.
+ */
 static void
-server_handle_message(trip_stream_t *s, size_t len, const unsigned char *buf)
+server_handle_message(trip_stream_t *s, enum trip_message_status status, size_t len, const unsigned char *buf)
 {
     printf("Server received message: %s\n", (const char *)buf);
 
-    trip_connection_t *c = s->connection;
-    trip_stream_t *stream = s->data = tripc_open_stream(c, s->id, s->type);
-    trips_send(stream, len, buf);
+    switch (status)
+    {
+        case TRIPM_RECV:
+            {
+                /* Open stream if not already open. */
+                trip_stream_t *stream = s->data;
+                if (!stream)
+                {
+                    trip_connection_t *c = s->connection;
+                    stream = tripc_open_stream(c, trips_id(s), trips_type(s));
+                    s->data = stream;
+                }
+
+                /* Copy message.
+                 * Buffers received won't last past this call.
+                 */
+                unsigned char *copybuf = malloc(len);
+                memcpy(copybuf, buf, len);
+
+                /* Send message back. */
+                trips_send(stream, len, copybuf);
+            }
+            break;
+        case TRIPM_SENT:
+            {
+                /* Free our message. */
+                free((void *)buf);
+            }
+            break;
+        case TRIPM_KILL:
+            {
+                /* Free our message if not sent. */
+                free((void *)buf);
+            }
+            break;
+        default:
+            abort();
+    }
 }
 
 /* TIMEOUT HANDLING */
 
+/**
+ * Callback for libuv to call upon timeout.
+ */
 static void on_timeout(uv_timer_t *req)
 {
     trip_router_t *router = (trip_router_t *)req->data;
-    trip_action(router, TRIP_TIMEOUT, 0);
+    trip_action(router, TRIP_SOCKET_TIMEOUT, 0);
 }
 
+/**
+ * Set or clear the timeout needed by the router.
+ */
 static int
 router_handle_timeout(trip_router_t *router, long ms)
 {
     mydata_t *data = router->data;
-    uv_timer_t *t = &data->server_timeout;
+    uv_timer_t *t = &data->timeout;
     t->data = router;
 
     if (ms < 0)
     {
-        uv_timer_stop(&t->timeout);
-        if (0 == ms)
-        {
-            trip_action(router, TRIP_TIMEOUT, flags);
-        }
+        uv_timer_stop(&data->timeout);
     }
     else
     {
-        uv_timer_start(&t->timer, on_timeout, ms, 0);
+        if (0 == ms)
+        {
+            trip_action(router, TRIP_SOCKET_TIMEOUT, 0);
+        }
+        else
+        {
+            uv_timer_start(&data->timeout, on_timeout, ms, 0);
+        }
     }
 
     return 0;
@@ -147,6 +203,9 @@ typedef struct mysocket_s
   trip_router_t *router;
 } mysocket_t;
 
+/**
+ * Callback for libuv to call when an event is encountered.
+ */
 static void
 on_watch(uv_poll_t *req, int status, int events)
 {
@@ -165,17 +224,24 @@ on_watch(uv_poll_t *req, int status, int events)
     trip_action(c->router, c->sockfd, flags);
 }
 
+
+/**
+ * Init our socket data in context of libuv.
+ */
 mysocket_t *
 mysocket_new(trip_socket_t s, uv_loop_t *loop, trip_router_t *router)
 {
     mysocket_t *c = malloc(sizeof(mysocket_t));
     c->sockfd = s;
-    uv_poll_init_socket(loop, &c->poll_handle, sockfd);
+    uv_poll_init_socket(loop, &c->poll_handle, c->sockfd);
     c->poll_handle.data = c;
     c->router = router;
     return c;
 }
 
+/**
+ * Uninit our socket data and libuv handle.
+ */
 void
 mysocket_free(mysocket_t *c)
 {
@@ -183,6 +249,10 @@ mysocket_free(mysocket_t *c)
     free(c);
 }
 
+/**
+ * Handle watch request for socket used by router.
+ * Here we use libuv to watch the socket and notify us of events.
+ */
 static int
 router_handle_watch(trip_router_t *router, trip_socket_t s, int action, void *sp)
 {
@@ -193,7 +263,7 @@ router_handle_watch(trip_router_t *router, trip_socket_t s, int action, void *sp
     switch (action)
     {
         case TRIP_REMOVE:
-            if (socketp)
+            if (sp)
             {
                 mysocket_free((mysocket_t*)sp);
                 trip_assign(router, s, NULL);
@@ -202,7 +272,7 @@ router_handle_watch(trip_router_t *router, trip_socket_t s, int action, void *sp
         case TRIP_IN:
         case TRIP_OUT:
         case TRIP_INOUT:
-            context = sp ? (mysocket_t *)sp : mysocket_new(s, data->loop);
+            context = sp ? (mysocket_t *)sp : mysocket_new(s, data->loop, router);
 
             trip_assign(router, s, context);
 
@@ -226,21 +296,10 @@ router_handle_watch(trip_router_t *router, trip_socket_t s, int action, void *sp
 
 /* SETUP */
 
-/*
-static void
-keys_init(mydata_t *data)
-{
-    trip_kp(data->openpub, data->opensec);
-    trip_sign_kp(data->signpub, data->signsec);
-}
-*/
-
 static void
 server_init(mydata_t *data)
 {
     trip_router_t *server = data->server = trip_new(TRIP_PRESET_SERVER);
-    trip_setopt(server, TRIPOPT_OPEN_KP, data->openpub, data->opensec);
-    trip_setopt(server, TRIPOPT_SIGN_KP, data->signpub, data->signsec);
     trip_setopt(server, TRIPOPT_USER_DATA, data);
     trip_setopt(server, TRIPOPT_WATCH_CB, router_handle_watch);
     trip_setopt(server, TRIPOPT_TIMEOUT_CB, router_handle_timeout);
@@ -254,7 +313,7 @@ server_init(mydata_t *data)
 static void
 server_destroy(mydata_t *data)
 {
-    trip_free(server);
+    trip_free(data->server);
 }
 
 int main(int argc, char **argv)
@@ -262,13 +321,12 @@ int main(int argc, char **argv)
     mydata_t data = { 0 };
 
     data.loop = uv_default_loop();
-
-    uv_timer_init(data.loop, &data.server_timeout);
+    uv_timer_init(data.loop, &data.timeout);
 
     server_init(&data);
-    // TODO start the server
-    uv_run(loop, UV_RUN_DEFAULT);
+    uv_run(data.loop, UV_RUN_DEFAULT);
     server_destroy(&data);
   
     return 0;
 }
+

@@ -197,7 +197,7 @@ trips_close(trip_stream_t *_s)
  * @return Zero on success in passing to framework; error otherwise.
  */
 int
-trips_send(trip_stream_t *_s, size_t len, unsigned char *buf)
+trips_send(trip_stream_t *_s, size_t len, const unsigned char *buf)
 {
     trip_tostream(s, _s);
 

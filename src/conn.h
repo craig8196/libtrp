@@ -153,6 +153,8 @@ int
 _tripc_check_open_seq(_trip_connection_t *c, uint32_t seq);
 int
 _tripc_seg(_trip_connection_t *c, unsigned char control, int len, unsigned char *buf);
+int
+_tripc_send(_trip_connection_t *c, size_t len, void *buf);
 
 
 #ifdef __cplusplus
