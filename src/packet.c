@@ -19,10 +19,16 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  ******************************************************************************/
+/**
+ * @file packet.c
+ * @brief Implementation of the UDP packet interface.
+ */
 #include "libtrp.h"
 #include "libtrp_memory.h"
 
+#include <ctype.h>
 #include <errno.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -51,6 +57,7 @@ _trip_udp_af_to_pf(int ai_family)
 static void
 _trip_udp_bind(void *_c)
 {
+    // TODO validate this function and the procedure for binding
     _trip_udp_context_t *c = _c;
 
     struct addrinfo hints = (struct addrinfo){ 0 };
@@ -143,53 +150,99 @@ _trip_udp_bind(void *_c)
     //TODO move notifying router down here
 }
 
+// TODO create unbind, resolve, send, read, wait??
+
+static bool
+_trip_udp_validate_info(const unsigned char *s)
+{
+    int i;
+    for (i = 0; i < 5; ++i)
+    {
+        if (!s[i])
+        {
+            break;
+        }
+
+        if (!isdigit((char)s[i]))
+        {
+            return false;
+        }
+    }
+
+    if (s[i])
+    {
+        return false;
+    }
+
+    int port = atoi((const char *)s);
+    if (port > 65535 || port <= 0)
+    {
+        return false;
+    }
+
+    // TODO eventually parse IP address to bind to...
+
+    return true;
+}
+
 trip_packet_t *
-trip_packet_new_udp(const unsigned char *info)
+trip_packet_new_udp(const char *_info)
 {
     int e = 0;
     trip_packet_t *p = NULL;
+    const unsigned char *info = (const unsigned char *)_info;
 
     do
     {
-        p = (trip_packet_t *)tripm_alloc(sizeof(trip_packet_t *));
+        /* Validate info. */
+        if (!info)
+        {
+            info = (const unsigned char *)"42423";
+        }
+        else if (!_trip_udp_validate_info(info))
+        {
+            e = EINVAL;
+            break;
+        }
 
+        /* Allocate packet struct. */
+        p = (trip_packet_t *)tripm_alloc(sizeof(trip_packet_t *));
         if (!p)
         {
             e = ENOMEM;
             break;
         }
 
-        if (!info)
-        {
-            info = (const unsigned char *)"42423";
-        }
-
+        /* Copy info string. */
         size_t len = strlen((const char *)info);
         char *s = tripm_alloc(len + 1);
         if (!s)
         {
             e = ENOMEM;
-            tripm_free(p);
             break;
         }
-        
         memcpy(s, info, len + 1);
 
+        /* Allocate context information. */
         _trip_udp_context_t *c = tripm_alloc(sizeof(_trip_udp_context_t));
-
         if (!c)
         {
             e = ENOMEM;
             tripm_free(s);
-            tripm_free(p);
             break;
         }
 
+        /* Fill structs. */
         c->info = s;
         c->fd = 0;
         p->ud = c;
-
         p->bind = _trip_udp_bind;
+        p->resolve = NULL;
+        p->send = NULL;
+        p->read = NULL;
+        p->unbind = NULL;
+        p->wait = NULL;
+        p->router = NULL;
     } while (0);
 
     if (e)

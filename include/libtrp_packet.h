@@ -63,21 +63,18 @@ typedef int trip_packet_wait_t(void *);
 typedef struct trip_packet_s
 {
     void *ud;
-    int *fds;
-    int *fde;
-    size_t fdlen;
     trip_packet_bind_t *bind;
     trip_packet_resolve_t *resolve;
     trip_packet_send_t *send;
     trip_packet_read_t *read;
     trip_packet_unbind_t *unbind;
     trip_packet_wait_t *wait;
-    /* Filled out by router if not by you. */
+    /* Filled out by router. */
     trip_router_t *router;
 } trip_packet_t;
 
 trip_packet_t *
-trip_packet_new_udp(const unsigned char *info);
+trip_packet_new_udp(const char *info);
 void
 trip_packet_free_udp(trip_packet_t *);
 

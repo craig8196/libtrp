@@ -128,64 +128,6 @@ _trip_close(_trip_router_t *r)
     connmap_destroy(&r->con);
 }
 
-const char *
-trip_errmsg(trip_router_t *_r)
-{
-    trip_torouter(r, _r);
-    return r->errmsg ? r->errmsg : "";
-}
-
-int
-trip_setopt(trip_router_t *_r, enum trip_router_opt opt, ...)
-{
-	va_list ap;
-
-    trip_torouter(r, _r);
-    int rval = 0;
-
-	va_start(ap, opt);
-
-    switch (opt)
-    {
-        case TRIPOPT_OPEN_KP:
-            r->openpub = va_arg(ap, unsigned char *);
-            r->opensec = va_arg(ap, unsigned char *);
-            break;
-        case TRIPOPT_SIGN_KP:
-            r->signpub = va_arg(ap, unsigned char *);
-            r->signsec = va_arg(ap, unsigned char *);
-            break;
-        case TRIPOPT_USER_DATA:
-            r->ud = va_arg(ap, void *);
-            break;
-        case TRIPOPT_WATCH_CB:
-            r->watch = va_arg(ap, trip_handle_watch_t);
-            break;
-        case TRIPOPT_TIMEOUT_CB:
-            r->timeout = va_arg(ap, trip_handle_timeout_t);
-            break;
-        case TRIPOPT_SCREEN_CB:
-            r->screen = va_arg(ap, trip_handle_screen_t);
-            break;
-        case TRIPOPT_CONNECTION_CB:
-            r->connection = va_arg(ap, trip_handle_connection_t);
-            break;
-        case TRIPOPT_STREAM_CB:
-            r->stream = va_arg(ap, trip_handle_stream_t);
-            break;
-        case TRIPOPT_MESSAGE_CB:
-            r->message = va_arg(ap, trip_handle_message_t);
-            break;
-        default:
-            rval = EINVAL;
-            break;
-    }
-
-    va_end(ap);
-
-    return rval;
-}
-
 static void
 _trip_router_reject(_trip_router_t *r, int src, int reason)
 {
@@ -536,6 +478,154 @@ trip_unready(trip_router_t *_r, int err)
     _trip_set_state(r, _TRIPR_STATE_UNBIND);
 }
 
+int
+_trip_fill_missing(_trip_router_t *r)
+{
+    if (!r->packet)
+    {
+        trip_setopt((trip_router_t *)r, TRIPOPT_PACKET, NULL);
+
+        if (!r->packet)
+        {
+            _trip_set_error(r, EINVAL,
+                "Unable to initialize default UDP packet interface.");
+            return EINVAL;
+        }
+    }
+
+    return 0;
+}
+
+int
+_trip_verify(_trip_router_t *r)
+{
+    int code = 0;
+    const char *msg = NULL;
+
+    do
+    {
+        if (!r->watch
+            || !r->timeout
+            || !r->connection
+            || !r->stream
+            || !r->message)
+        {
+            code = EINVAL;
+            msg = "Required method missing. See documentation.";
+        }
+    } while (false);
+
+    if (code)
+    {
+        _trip_set_error(r, code, msg);
+    }
+
+    return code;
+}
+
+int
+_trip_fd_events_to_epoll(int events)
+{
+    int eout = 0;
+
+    switch (events)
+    {
+        case TRIP_REMOVE:
+            break;
+        case TRIP_IN:
+        case TRIP_OUT:
+        case TRIP_INOUT:
+            if (events != TRIP_IN)
+            {
+                eout |= EPOLLOUT;
+            }
+            if (events != TRIP_OUT)
+            {
+                eout |= EPOLLIN;
+            }
+            break;
+        default:
+            break;
+    }
+
+    return eout;
+}
+
+void
+_trip_watch_cb(trip_router_t *_r, int fd, int events, void *data)
+{
+    trip_torouter(r, _r);
+    _trip_wait_t *w = r->wait;
+
+    // TODO
+    data = data;
+
+    int c;
+    struct epoll_event ev = { 0 };
+
+    ev.events = _trip_fd_events_to_epoll(events);
+    ev.data.fd = fd;
+
+    if (TRIP_REMOVE != events)
+    {
+        // TODO
+        /*
+        if (TRIP_ADD & events)
+        {
+            c = epoll_ctl(w->efd, EPOLL_CTL_ADD, fd, &ev);
+        }
+        else
+        {
+            c = epoll_ctl(w->efd, EPOLL_CTL_MOD, fd, &ev);
+        }
+        */
+    }
+    else
+    {
+        c = epoll_ctl(w->efd, EPOLL_CTL_DEL, fd, &ev);
+    }
+
+    if (c)
+    {
+        printf("Error on epoll (%d): %s", c, strerror(c));
+    }
+}
+
+void
+_trip_timeout_cb(trip_router_t *_r, int timeout)
+{
+    trip_torouter(r, _r);
+    _trip_wait_t *w = r->wait;
+    w->timeout = timeout;
+}
+
+_trip_wait_t *
+_trip_wait_new()
+{
+    _trip_wait_t *w = tripm_alloc(sizeof(_trip_wait_t));
+
+    w->efd = epoll_create1(0);
+
+    int c = 0;
+
+    do
+    {
+        if (-1 == w->efd)
+        {
+            c = EINVAL;
+            break;
+        }
+    } while (false);
+
+    if (c)
+    {
+        tripm_free(w);
+        w = NULL;
+    }
+
+    return w;
+}
+
 trip_router_t *
 trip_new(enum trip_preset preset)
 {
@@ -584,49 +674,78 @@ trip_new(enum trip_preset preset)
     return (trip_router_t *)r;
 }
 
-int
-_trip_fill_missing(_trip_router_t *r)
+void
+trip_free(trip_router_t *_r)
 {
-    if (!r->packet)
-    {
-        r->packet = trip_packet_new_udp(NULL);
+    trip_torouter(r, _r);
 
-        if (!r->packet)
-        {
-            _trip_set_error(r, EINVAL,
-                "Unable to initialize default UDP packet interface.");
-            return EINVAL;
-        }
-    }
-    // TODO check that we have a packet interface
-    return 0;
+    tripm_free(r);
 }
 
 int
-_trip_verify(_trip_router_t *r)
+trip_setopt(trip_router_t *_r, enum trip_router_opt opt, ...)
 {
-    int code = 0;
-    const char *msg = NULL;
+	va_list ap;
 
-    do
-    {
-        if (!r->watch
-            || !r->timeout
-            || !r->connection
-            || !r->stream
-            || !r->message)
-        {
-            code = EINVAL;
-            msg = "Required method missing. See documentation.";
-        }
-    } while (false);
+    trip_torouter(r, _r);
+    int rval = 0;
 
-    if (code)
+	va_start(ap, opt);
+
+    switch (opt)
     {
-        _trip_set_error(r, code, msg);
+        case TRIPOPT_OPEN_KP:
+            r->openpub = va_arg(ap, unsigned char *);
+            r->opensec = va_arg(ap, unsigned char *);
+            break;
+        case TRIPOPT_SIGN_KP:
+            r->signpub = va_arg(ap, unsigned char *);
+            r->signsec = va_arg(ap, unsigned char *);
+            break;
+        case TRIPOPT_USER_DATA:
+            r->ud = va_arg(ap, void *);
+            break;
+        case TRIPOPT_PACKET:
+            r->packet = va_arg(ap, void *);
+            if (!r->packet)
+            {
+                r->packet = trip_packet_new_udp(NULL);
+                // TODO set flag to free the packet interface
+            }
+            break;
+        case TRIPOPT_WATCH_CB:
+            r->watch = va_arg(ap, trip_handle_watch_t);
+            break;
+        case TRIPOPT_TIMEOUT_CB:
+            r->timeout = va_arg(ap, trip_handle_timeout_t);
+            break;
+        case TRIPOPT_SCREEN_CB:
+            r->screen = va_arg(ap, trip_handle_screen_t);
+            break;
+        case TRIPOPT_CONNECTION_CB:
+            r->connection = va_arg(ap, trip_handle_connection_t);
+            break;
+        case TRIPOPT_STREAM_CB:
+            r->stream = va_arg(ap, trip_handle_stream_t);
+            break;
+        case TRIPOPT_MESSAGE_CB:
+            r->message = va_arg(ap, trip_handle_message_t);
+            break;
+        default:
+            rval = EINVAL;
+            break;
     }
 
-    return code;
+    va_end(ap);
+
+    return rval;
+}
+
+const char *
+trip_errmsg(trip_router_t *_r)
+{
+    trip_torouter(r, _r);
+    return r->errmsg ? r->errmsg : "";
 }
 
 /**
@@ -790,136 +909,18 @@ trip_action(trip_router_t *_r, trip_socket_t fd, int events)
 }
 
 void
-trip_open_connection(trip_router_t *_r, void *ud, size_t ilen,
-                     const unsigned char *info)
+trip_assign(trip_router_t *_r, trip_socket_t s, void *data)
 {
-    trip_torouter(r, _r);
-
-    // TODO
-    ud = ud;
-    ilen = ilen;
-    info = info;
-
-    if (r->allow_out)
-    {
-        _trip_connection_t *c = _trip_new_connection(r);
-        // TODO acquire connection and ID...
-        r->packet->resolve(r->packet->ud, (trip_connection_t *)c);
-    }
-    else
-    {
-        // TODO how to fail gracefully... temporary connection in error state...
-        //r->connection(r->ud, NULL, info, ud, false);
-    }
+    // TODO associate the socket and the data
+    _r = _r;
+    s = s;
+    data = data;
 }
 
 int
 trip_start(trip_router_t *_r)
 {
     return trip_action(_r, TRIP_SOCKET_TIMEOUT, 0);
-}
-
-int
-_trip_fd_events_to_epoll(int events)
-{
-    int eout = 0;
-
-    switch (events)
-    {
-        case TRIP_REMOVE:
-            break;
-        case TRIP_IN:
-        case TRIP_OUT:
-        case TRIP_INOUT:
-            if (events != TRIP_IN)
-            {
-                eout |= EPOLLOUT;
-            }
-            if (events != TRIP_OUT)
-            {
-                eout |= EPOLLIN;
-            }
-            break;
-        default:
-            break;
-    }
-
-    return eout;
-}
-
-void
-_trip_watch_cb(trip_router_t *_r, int fd, int events, void *data)
-{
-    trip_torouter(r, _r);
-    _trip_wait_t *w = r->wait;
-
-    // TODO
-    data = data;
-
-    int c;
-    struct epoll_event ev = { 0 };
-
-    ev.events = _trip_fd_events_to_epoll(events);
-    ev.data.fd = fd;
-
-    if (TRIP_REMOVE != events)
-    {
-        // TODO
-        /*
-        if (TRIP_ADD & events)
-        {
-            c = epoll_ctl(w->efd, EPOLL_CTL_ADD, fd, &ev);
-        }
-        else
-        {
-            c = epoll_ctl(w->efd, EPOLL_CTL_MOD, fd, &ev);
-        }
-        */
-    }
-    else
-    {
-        c = epoll_ctl(w->efd, EPOLL_CTL_DEL, fd, &ev);
-    }
-
-    if (c)
-    {
-        printf("Error on epoll (%d): %s", c, strerror(c));
-    }
-}
-
-void
-_trip_timeout_cb(trip_router_t *_r, int timeout)
-{
-    trip_torouter(r, _r);
-    _trip_wait_t *w = r->wait;
-    w->timeout = timeout;
-}
-
-_trip_wait_t *
-_trip_wait_new()
-{
-    _trip_wait_t *w = tripm_alloc(sizeof(_trip_wait_t));
-
-    w->efd = epoll_create1(0);
-
-    int c = 0;
-
-    do
-    {
-        if (-1 == w->efd)
-        {
-            c = EINVAL;
-            break;
-        }
-    } while (false);
-
-    if (c)
-    {
-        tripm_free(w);
-        w = NULL;
-    }
-
-    return w;
 }
 
 int
@@ -1027,10 +1028,26 @@ trip_stop(trip_router_t *_r)
 }
 
 void
-trip_free(trip_router_t *_r)
+trip_open_connection(trip_router_t *_r, void *ud, size_t ilen,
+                     const unsigned char *info)
 {
     trip_torouter(r, _r);
 
-    tripm_free(r);
+    // TODO
+    ud = ud;
+    ilen = ilen;
+    info = info;
+
+    if (r->allow_out)
+    {
+        _trip_connection_t *c = _trip_new_connection(r);
+        // TODO acquire connection and ID...
+        r->packet->resolve(r->packet->ud, (trip_connection_t *)c);
+    }
+    else
+    {
+        // TODO how to fail gracefully... temporary connection in error state...
+        //r->connection(r->ud, NULL, info, ud, false);
+    }
 }
 
