@@ -23,6 +23,7 @@
 #include <time.h>
 
 
+#define _TRIP_MIN_TIMEOUT (1)
 #define _TRIP_MAX_TIMEOUT (10000)
 
 uint64_t
@@ -33,31 +34,31 @@ triptime_now(void)
     {
         return 0;
     }
-    uint64_t n = t.tv_sec + (t.tv_nsec/1000000);
+    uint64_t n = ((uint64_t)t.tv_sec * 1000) + (t.tv_nsec/1000000);
     return n;
 }
 
+/**
+ * @param timeout_ms - Must be zero or positive value.
+ */
 uint64_t
 triptime_deadline(int timeout_ms)
 {
     uint64_t n = triptime_now();
-    if (timeout_ms >= 0)
-    {
-        return n + timeout_ms;
-    }
-    else
-    {
-        return n - (timeout_ms * -1);
-    }
+    return n + timeout_ms;
 }
 
 int
 triptime_timeout(uint64_t deadline, uint64_t now)
 {
     int timeout = (int)(deadline - now);
-    if (timeout < 0)
+    if (timeout > _TRIP_MAX_TIMEOUT)
     {
         timeout = _TRIP_MAX_TIMEOUT;
+    }
+    else if (timeout < 0)
+    {
+        timeout = _TRIP_MIN_TIMEOUT;
     }
     return timeout;
 }
