@@ -57,10 +57,33 @@ _trip_set_error(_trip_router_t *r, int eval, const char *msg)
 }
 
 void
+_trip_timeout(_trip_router_t *r, int ms, bool forstate)
+{
+    if (forstate)
+    {
+        r->timeout((trip_router_t *)r, ms);
+    }
+    else
+    {
+        if (ms >= 0)
+        {
+            /* Only allow timeouts shorter than the state deadline.
+             * TODO should we save the deadline for non-state deadlines? Tricky.
+             */
+            uint64_t now = triptime_now();
+            if ((now + ms) < r->statedeadline)
+            {
+                r->timeout((trip_router_t *)r, ms);
+            }
+        }
+    }
+}
+
+void
 _trip_listen(_trip_router_t *r, trip_socket_t fd, int events)
 {
     /* Let the packet interface read. */
-    r->packet->read(r->packet->data, fd, events, r->max_packet_read_count);
+    r->packet->read(r->packet, fd, events, r->max_packet_read_count);
 
     /* Rate limit number of send. */
     _trip_connection_t *c = sendq_dq(&r->sendq);
@@ -274,14 +297,14 @@ _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
     if (_TRIP_CONTROL_OPEN == prefix.control)
     {
         /* Check if incoming requests are allowed. */
-        if (!r->allow_in)
+        if (!(r->flag & _TRIPR_FLAG_ALLOW_IN))
         {
             _trip_router_reject(r, src, 2);
             return;
         }
 
         /* Check if encryption is required. */
-        if (!prefix.encrypted && !r->allow_plain_open)
+        if (!prefix.encrypted && !(r->flag & _TRIPR_FLAG_ALLOW_PLAIN_OPEN))
         {
             _trip_router_reject(r, src, 3);
             return;
@@ -358,7 +381,7 @@ _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
     }
     else
     {
-        if (!prefix.encrypted && !r->allow_plain_seg)
+        if (!prefix.encrypted && !(r->flag & _TRIPR_FLAG_ALLOW_PLAIN_SEG))
         {
             /* Not encrypted when required. */
             _trip_router_reject(r, src, 7);
@@ -395,7 +418,7 @@ _trip_set_state(_trip_router_t *r, enum _tripr_state state)
         case _TRIPR_STATE_BIND:
             {
                 r->statedeadline = triptime_deadline(0);
-                r->timeout((trip_router_t *)r, 0);
+                _trip_timeout(r, -1, true);
             }
             break;
         case _TRIPR_STATE_ERROR:
@@ -413,7 +436,7 @@ _trip_set_state(_trip_router_t *r, enum _tripr_state state)
         case _TRIPR_STATE_BIND:
             {
                 r->statedeadline = triptime_deadline(r->timeout_bind);
-                r->timeout((trip_router_t *)r, r->timeout_bind);
+                _trip_timeout(r, r->timeout_bind, true);
             }
             break;
         case _TRIPR_STATE_LISTEN:
@@ -431,7 +454,7 @@ _trip_set_state(_trip_router_t *r, enum _tripr_state state)
                 {
                     _trip_notify(r);
                     r->statedeadline = triptime_deadline(r->timeout_notify);
-                    r->timeout((trip_router_t *)r, r->timeout_notify);
+                    _trip_timeout(r, r->timeout_notify, true);
                 }
             }
             break;
@@ -729,7 +752,7 @@ trip_free(trip_router_t *_r)
 {
     trip_torouter(r, _r);
 
-    if (r->free_packet)
+    if (r->flag & _TRIPR_FLAG_FREE_PACKET)
     {
         trip_packet_free_udp(r->packet);
         r->packet = NULL;
@@ -771,7 +794,7 @@ trip_setopt(trip_router_t *_r, enum trip_router_opt opt, ...)
             if (!r->packet)
             {
                 r->packet = trip_packet_new_udp(NULL);
-                r->free_packet = true;
+                r->flag |= _TRIPR_FLAG_FREE_PACKET;
             }
             break;
         case TRIPOPT_WATCH_CB:
@@ -859,7 +882,6 @@ trip_action(trip_router_t *_r, trip_socket_t fd, int events)
                 }
 
                 r->packet->router = _r;
-
                 _trip_set_state(r, _TRIPR_STATE_BIND);
                 r->packet->bind(r->packet);
             }
@@ -885,12 +907,11 @@ trip_action(trip_router_t *_r, trip_socket_t fd, int events)
                 if (now > r->statedeadline)
                 {
                     _trip_set_error(r, ETIME, "Bind timeout.");
+                    break;
                 }
-                else
-                {
-                    int timeout = triptime_timeout(r->statedeadline, now);
-                    r->timeout((trip_router_t *)r, timeout);
-                }
+
+                int timeout = triptime_timeout(r->statedeadline, now);
+                _trip_timeout(r, timeout, true);
             }
             break;
         case _TRIPR_STATE_LISTEN:
@@ -948,10 +969,9 @@ trip_action(trip_router_t *_r, trip_socket_t fd, int events)
 void
 trip_assign(trip_router_t *_r, trip_socket_t s, void *data)
 {
-    // TODO associate the socket and the data
-    _r = _r;
-    s = s;
-    data = data;
+    trip_torouter(r, _r);
+
+    sockmap_put(&r->sockmap, s, data);
 }
 
 int
@@ -1075,7 +1095,7 @@ trip_open_connection(trip_router_t *_r, void *ud, size_t ilen,
     ilen = ilen;
     info = info;
 
-    if (r->allow_out)
+    if (r->flag & _TRIPR_FLAG_ALLOW_OUT)
     {
         _trip_connection_t *c = _trip_new_connection(r);
         // TODO acquire connection and ID...

@@ -34,6 +34,7 @@ extern "C" {
 #include "core.h"
 #include "connmap.h"
 #include "sendq.h"
+#include "sockmap.h"
 
 
 typedef struct _trip_router_s _trip_router_t;
@@ -57,6 +58,13 @@ enum _tripr_state
     _TRIPR_STATE_END,
     _TRIPR_STATE_ERROR,
 };
+
+#define _TRIPR_FLAG_ALLOW_IN           (1 << 0)
+#define _TRIPR_FLAG_ALLOW_OUT          (1 << 1)
+#define _TRIPR_FLAG_ALLOW_PLAIN_OPEN   (1 << 2)
+#define _TRIPR_FLAG_ALLOW_PLAIN_SEG    (1 << 3)
+#define _TRIPR_FLAG_ALLOW_PLAIN_SIG    (1 << 4)
+#define _TRIPR_FLAG_FREE_PACKET        (1 << 5)
 
 #define _TRIP_MAX_EVENTS (16)
 struct _trip_wait_s
@@ -99,6 +107,9 @@ struct _trip_router_s
     /* Connections. */
     connmap_t con;
 
+    /* Socket map. */
+    sockmap_t sockmap;
+
     /* Send Management */
     sendq_t sendq;
 
@@ -122,23 +133,15 @@ struct _trip_router_s
     uint32_t max_connection_send;
     uint32_t max_message_id;
 
-    /* Settings */
-    // TODO compress to bit field
-    uint32_t allow;
-    bool allow_in;
-    bool allow_out;
-    bool allow_plain_open;
-    bool allow_plain_seg;
-    bool allow_plain_sig;
-
-    bool free_packet;
-
     // TODO needed? used?
     int timeout_bind;
     int timeout_data;
     int timeout_close;
     int timeout_stop;
     int timeout_notify;
+
+    /* Boolean flags. */
+    uint32_t flag;
 };
 
 void

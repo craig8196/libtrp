@@ -56,11 +56,11 @@ trip_error(trip_router_t *r, int error, const char *emsg);
 /* TRiP Packet Interface */
 typedef struct trip_packet_s trip_packet_t;
 typedef void trip_packet_bind_t(trip_packet_t *);
-typedef void trip_packet_resolve_t(void *, trip_connection_t *);
-typedef int trip_packet_send_t(void *, size_t, void *buf);
-typedef int trip_packet_read_t(void *, trip_socket_t fd, int events, int max);
-typedef int trip_packet_unbind_t(void *);
-typedef int trip_packet_wait_t(void *);
+typedef void trip_packet_resolve_t(trip_packet_t *, trip_connection_t *);
+typedef int trip_packet_send_t(trip_packet_t *, size_t, void *buf);
+typedef int trip_packet_read_t(trip_packet_t *, trip_socket_t fd, int events, int max);
+typedef int trip_packet_unbind_t(trip_packet_t *);
+typedef int trip_packet_wait_t(trip_packet_t *); // TODO what does trip need to call wait for?
 
 struct trip_packet_s
 {
@@ -71,7 +71,7 @@ struct trip_packet_s
     trip_packet_read_t *read;
     trip_packet_unbind_t *unbind;
     trip_packet_wait_t *wait;
-    /* Filled out by router. */
+    /* Filled out by router on start. */
     trip_router_t *router;
 };
 
