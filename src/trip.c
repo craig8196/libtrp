@@ -387,6 +387,11 @@ _trip_set_state(_trip_router_t *r, enum _tripr_state state)
     /* When leaving the state, do this. */
     switch (r->state)
     {
+        case _TRIPR_STATE_START:
+            {
+                /* Shouldn't need to clean up anything. */
+            }
+            break;
         case _TRIPR_STATE_BIND:
             {
                 r->statedeadline = triptime_deadline(0);
@@ -431,9 +436,13 @@ _trip_set_state(_trip_router_t *r, enum _tripr_state state)
             }
             break;
         case _TRIPR_STATE_ERROR:
-            /* In error state, previous states should be 
-             * cleaned up by this point.
-             */
+            {
+                /* In error state, previous states should be 
+                 * cleaned up by this point.
+                 * The exception being unbinding.
+                 */
+                // TODO check if bound and unbind
+            }
             break;
         default:
             break;
@@ -508,6 +517,14 @@ trip_unready(trip_router_t *_r, int err)
 
     r->error = err;
     _trip_set_state(r, _TRIPR_STATE_UNBIND);
+}
+
+void
+trip_error(trip_router_t *_r, int error, const char *emsg)
+{
+    trip_torouter(r, _r);
+
+    _trip_set_error(r, error, emsg);
 }
 
 int
@@ -716,6 +733,11 @@ trip_free(trip_router_t *_r)
     {
         trip_packet_free_udp(r->packet);
         r->packet = NULL;
+    }
+
+    if (r->errmsg)
+    {
+        tripm_free(r->errmsg);
     }
 
     tripm_free(r);

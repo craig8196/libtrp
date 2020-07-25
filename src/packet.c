@@ -28,11 +28,12 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <netdb.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <netdb.h>
+#include <unistd.h>
 
 
 typedef struct _trip_udp_context_s
@@ -79,8 +80,8 @@ _trip_udp_bind(trip_packet_t *packet)
         int status = getaddrinfo(NULL, c->info, &hints, &servinfo);
         if (status)
         {
-            error = -1;
-            // TODO call trip with error
+            error = EINVAL; // TODO convert from getaddrinfo error to generic
+            emsg = "Error from getaddrinfo."; // Use gai_strerror.
             break;
         }
         
@@ -121,34 +122,37 @@ _trip_udp_bind(trip_packet_t *packet)
         if (!choice)
         {
             // TODO report error to router
-            error = -1;
+            error = EINVAL;
+            emsg = "No valid address to bind to.";
             break;
         }
 
+        /*
+         * Since Linux 2.6.27 the *type* argument can be bitwise OR'd
+         * with SOCK_NONBLOCK to save a call to fcntl.
+         * @see https://man7.org/linux/man-pages/man2/socket.2.html
+         */
         int s = socket(_trip_udp_af_to_pf(choice->ai_family),
-                       choice->ai_socktype,
+                       choice->ai_socktype | SOCK_NONBLOCK,
                        choice->ai_protocol);
-
         if (s < 0)
         {
-            // TODO report error to router
-            error = -1;
+            error = errno;
+            emsg = "Error trying to create socket.";
             break;
         }
 
         int err = bind(s, choice->ai_addr, choice->ai_addrlen);
         if (err < 0)
         {
-            // TODO report error to router
-            error = -1;
+            error = errno;
+            emsg = "Error trying to bind socket.";
+            /* Ignore further errors. */
+            close(s);
             break;
         }
 
         c->fd = s;
-
-        // TODO am I done?
-        // TODO report success to router
-
     } while (0);
 
     if (servinfo)
@@ -164,7 +168,6 @@ _trip_udp_bind(trip_packet_t *packet)
     {
         trip_error(packet->router, error, emsg);
     }
-    //TODO move notifying router down here
 }
 
 // TODO create unbind, resolve, send, read, wait??
