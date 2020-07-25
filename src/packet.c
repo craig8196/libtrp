@@ -54,14 +54,18 @@ _trip_udp_af_to_pf(int ai_family)
     }
 }
 
+/**
+ * @see https://beej.us/guide/bgnet/html/
+ */
 static void
-_trip_udp_bind(void *_c)
+_trip_udp_bind(trip_packet_t *packet)
 {
-    // TODO validate this function and the procedure for binding
-    _trip_udp_context_t *c = _c;
+    _trip_udp_context_t *c = (_trip_udp_context_t *)packet->data;
 
     struct addrinfo hints = (struct addrinfo){ 0 };
     struct addrinfo *servinfo = NULL;
+    int error = 0;
+    const char *emsg = NULL;
     
     do
     {
@@ -75,6 +79,7 @@ _trip_udp_bind(void *_c)
         int status = getaddrinfo(NULL, c->info, &hints, &servinfo);
         if (status)
         {
+            error = -1;
             // TODO call trip with error
             break;
         }
@@ -116,6 +121,7 @@ _trip_udp_bind(void *_c)
         if (!choice)
         {
             // TODO report error to router
+            error = -1;
             break;
         }
 
@@ -126,6 +132,7 @@ _trip_udp_bind(void *_c)
         if (s < 0)
         {
             // TODO report error to router
+            error = -1;
             break;
         }
 
@@ -133,6 +140,7 @@ _trip_udp_bind(void *_c)
         if (err < 0)
         {
             // TODO report error to router
+            error = -1;
             break;
         }
 
@@ -146,6 +154,15 @@ _trip_udp_bind(void *_c)
     if (servinfo)
     {
         freeaddrinfo(servinfo);
+    }
+
+    if (!error)
+    {
+        trip_ready(packet->router);
+    }
+    else
+    {
+        trip_error(packet->router, error, emsg);
     }
     //TODO move notifying router down here
 }
@@ -180,7 +197,7 @@ _trip_udp_validate_info(const unsigned char *s)
         return false;
     }
 
-    // TODO eventually parse IP address to bind to...
+    // TODO eventually parse IP address to bind to... only port supported now.
 
     return true;
 }
@@ -235,7 +252,7 @@ trip_packet_new_udp(const char *_info)
         /* Fill structs. */
         c->info = s;
         c->fd = 0;
-        p->ud = c;
+        p->data = c;
         p->bind = _trip_udp_bind;
         p->resolve = NULL;
         p->send = NULL;
@@ -245,6 +262,7 @@ trip_packet_new_udp(const char *_info)
         p->router = NULL;
     } while (0);
 
+    /* Handle error. */
     if (e)
     {
         if (p)

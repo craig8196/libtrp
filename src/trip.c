@@ -60,7 +60,7 @@ void
 _trip_listen(_trip_router_t *r, trip_socket_t fd, int events)
 {
     /* Let the packet interface read. */
-    r->packet->read(r->packet->ud, fd, events, r->max_packet_read_count);
+    r->packet->read(r->packet->data, fd, events, r->max_packet_read_count);
 
     /* Rate limit number of send. */
     _trip_connection_t *c = sendq_dq(&r->sendq);
@@ -73,7 +73,7 @@ _trip_listen(_trip_router_t *r, trip_socket_t fd, int events)
         int code = _tripc_send(c, len, buf);
         if (!code)
         {
-            int error = p->send(p->ud, len, buf);
+            int error = p->send(p->data, len, buf);
 
             if (error)
             {
@@ -461,10 +461,13 @@ trip_resolve(trip_router_t *_r, trip_connection_t *_c, int err)
 }
 */
 
+// TODO should events be an enum??
 void
 trip_watch(trip_router_t *_r, trip_socket_t fd, int events)
 {
     trip_torouter(r, _r);
+
+    // TODO fill in simple socket map
 
     r->watch(_r, fd, events, NULL); // TODO
 }
@@ -652,6 +655,7 @@ trip_new(enum trip_preset preset)
             break;
         }
 
+        memset(r, 0, sizeof(_trip_router_t));
 
         switch (preset)
         {
@@ -678,6 +682,12 @@ void
 trip_free(trip_router_t *_r)
 {
     trip_torouter(r, _r);
+
+    if (r->free_packet)
+    {
+        trip_packet_free_udp(r->packet);
+        r->packet = NULL;
+    }
 
     tripm_free(r);
 }
@@ -710,7 +720,7 @@ trip_setopt(trip_router_t *_r, enum trip_router_opt opt, ...)
             if (!r->packet)
             {
                 r->packet = trip_packet_new_udp(NULL);
-                // TODO set flag to free the packet interface
+                r->free_packet = true;
             }
             break;
         case TRIPOPT_WATCH_CB:
@@ -800,7 +810,7 @@ trip_action(trip_router_t *_r, trip_socket_t fd, int events)
                 r->packet->router = _r;
 
                 _trip_set_state(r, _TRIPR_STATE_BIND);
-                r->packet->bind(r->packet->ud);
+                r->packet->bind(r->packet);
 
                 if (r->error)
                 {
@@ -1042,7 +1052,7 @@ trip_open_connection(trip_router_t *_r, void *ud, size_t ilen,
     {
         _trip_connection_t *c = _trip_new_connection(r);
         // TODO acquire connection and ID...
-        r->packet->resolve(r->packet->ud, (trip_connection_t *)c);
+        r->packet->resolve(r->packet->data, (trip_connection_t *)c);
     }
     else
     {

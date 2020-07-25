@@ -49,20 +49,22 @@ void
 trip_timeout(trip_router_t *r, int timeoutms);
 void
 trip_unready(trip_router_t *r, int err);
+void
+trip_error(trip_router_t *r, int error, const char *emsg);
 
 
 /* TRiP Packet Interface */
-typedef void trip_packet_bind_t(void *);
+typedef struct trip_packet_s trip_packet_t;
+typedef void trip_packet_bind_t(trip_packet_t *);
 typedef void trip_packet_resolve_t(void *, trip_connection_t *);
 typedef int trip_packet_send_t(void *, size_t, void *buf);
 typedef int trip_packet_read_t(void *, trip_socket_t fd, int events, int max);
 typedef int trip_packet_unbind_t(void *);
 typedef int trip_packet_wait_t(void *);
 
-
-typedef struct trip_packet_s
+struct trip_packet_s
 {
-    void *ud;
+    void *data;
     trip_packet_bind_t *bind;
     trip_packet_resolve_t *resolve;
     trip_packet_send_t *send;
@@ -71,7 +73,7 @@ typedef struct trip_packet_s
     trip_packet_wait_t *wait;
     /* Filled out by router. */
     trip_router_t *router;
-} trip_packet_t;
+};
 
 trip_packet_t *
 trip_packet_new_udp(const char *info);

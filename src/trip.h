@@ -131,6 +131,8 @@ struct _trip_router_s
     bool allow_plain_seg;
     bool allow_plain_sig;
 
+    bool free_packet;
+
     // TODO needed? used?
     int timeout_bind;
     int timeout_data;
