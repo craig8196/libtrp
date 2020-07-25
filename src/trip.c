@@ -384,9 +384,33 @@ _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
 void
 _trip_set_state(_trip_router_t *r, enum _tripr_state state)
 {
+    /* When leaving the state, do this. */
+    switch (r->state)
+    {
+        case _TRIPR_STATE_BIND:
+            {
+                r->statedeadline = triptime_deadline(0);
+                r->timeout((trip_router_t *)r, 0);
+            }
+            break;
+        case _TRIPR_STATE_ERROR:
+            {
+                state = _TRIPR_STATE_ERROR;
+            }
+            break;
+        default:
+            break;
+    }
+
     /* When entering the state, do this. */
     switch (state)
     {
+        case _TRIPR_STATE_BIND:
+            {
+                r->statedeadline = triptime_deadline(r->timeout_bind);
+                r->timeout((trip_router_t *)r, r->timeout_bind);
+            }
+            break;
         case _TRIPR_STATE_LISTEN:
             {
                 r->statedeadline = 0;
@@ -402,9 +426,14 @@ _trip_set_state(_trip_router_t *r, enum _tripr_state state)
                 {
                     _trip_notify(r);
                     r->statedeadline = triptime_deadline(r->timeout_notify);
-                    r->timeout(r->ud, r->timeout_notify);
+                    r->timeout((trip_router_t *)r, r->timeout_notify);
                 }
             }
+            break;
+        case _TRIPR_STATE_ERROR:
+            /* In error state, previous states should be 
+             * cleaned up by this point.
+             */
             break;
         default:
             break;
@@ -713,7 +742,7 @@ trip_setopt(trip_router_t *_r, enum trip_router_opt opt, ...)
             r->signsec = va_arg(ap, unsigned char *);
             break;
         case TRIPOPT_USER_DATA:
-            r->ud = va_arg(ap, void *);
+            r->data = va_arg(ap, void *);
             break;
         case TRIPOPT_PACKET:
             r->packet = va_arg(ap, void *);
@@ -811,30 +840,6 @@ trip_action(trip_router_t *_r, trip_socket_t fd, int events)
 
                 _trip_set_state(r, _TRIPR_STATE_BIND);
                 r->packet->bind(r->packet);
-
-                if (r->error)
-                {
-                    break;
-                }
-
-                if (_TRIPR_STATE_LISTEN == r->state)
-                {
-                    r->statedeadline = triptime_deadline(0);
-                    r->timeout(r->ud, 0);
-                }
-                else if (_TRIPR_STATE_BIND == r->state)
-                {
-                    r->statedeadline = triptime_deadline(r->timeout_bind);
-                    r->timeout(r->ud, r->timeout_bind);
-                }
-                else if (_TRIPR_STATE_ERROR == r->state)
-                {
-                    /* Do nothing. */
-                }
-                else
-                {
-                    _trip_set_error(r, EINVAL, "Invalid state.");
-                }
             }
             break;
         case _TRIPR_STATE_BIND:
@@ -862,7 +867,7 @@ trip_action(trip_router_t *_r, trip_socket_t fd, int events)
                 else
                 {
                     int timeout = triptime_timeout(r->statedeadline, now);
-                    r->timeout(r->ud, timeout);
+                    r->timeout((trip_router_t *)r, timeout);
                 }
             }
             break;

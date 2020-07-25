@@ -74,7 +74,7 @@ struct _trip_wait_s
 struct _trip_router_s
 {
     /* Frequently Accessed */
-    void *ud;
+    void *data;
 
     /* User Hooks */
     trip_handle_screen_t *screen;
