@@ -30,6 +30,7 @@
 extern "C" {
 #endif
 
+#include "libtrp.h"
 
 #include "core.h"
 #include "message.h"
@@ -44,17 +45,19 @@ extern "C" {
 #define _TRIPS_OPT_PUBMASK (0x000F)
 #define _TRIPS_OPT_SECMASK (0x007F)
 
-// TODO idea for stream message lookup is to store in n x n array
-// TODO n long and n max messages linked per entry grow array by one
+// TODO idea for stream message lookup is to store in n x m array
+// TODO n long and m max messages linked per entry grow array by one
 // TODO attackers would need number that hashes perfectly and growing
 // TODO will throw clustering off
 struct _trip_stream_s
 {
     /* Frequently Accessed */
-    void *ud;
+    void *data;
     _trip_connection_t *connection;
 
     int id;
+    enum trip_connection_status status;
+    int type;
     int flags;
     _trip_msg_t *listbeg;
     _trip_msg_t *listend;

@@ -167,10 +167,11 @@ enum trip_stream_status
     TRIPS_STATUS_KILLED = 2,
     TRIPS_STATUS_ERROR  = 3,
 };
-enum trip_stream_status
-trips_status(trip_stream_t *s);
+
 int
 trips_id(trip_stream_t *s);
+enum trip_stream_status
+trips_status(trip_stream_t *s);
 int
 trips_type(trip_stream_t *s);
 void

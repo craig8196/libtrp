@@ -209,19 +209,26 @@ typedef struct mysocket_s
 static void
 on_watch(uv_poll_t *req, int status, int events)
 {
-    int flags = 0;
-    mysocket_t *c = (mysocket_t *)req->data;
-
-    if (events & UV_READABLE)
+    if (!status)
     {
-        flags |= TRIP_IN;
-    }
-    if (events & UV_WRITABLE)
-    {
-        flags |= TRIP_OUT;
-    }
+        int flags = 0;
+        mysocket_t *c = (mysocket_t *)req->data;
 
-    trip_action(c->router, c->sockfd, flags);
+        if (events & UV_READABLE)
+        {
+            flags |= TRIP_IN;
+        }
+        if (events & UV_WRITABLE)
+        {
+            flags |= TRIP_OUT;
+        }
+
+        trip_action(c->router, c->sockfd, flags);
+    }
+    else
+    {
+        abort();
+    }
 }
 
 
@@ -316,7 +323,7 @@ server_destroy(mydata_t *data)
     trip_free(data->server);
 }
 
-int main(int argc, char **argv)
+int main()
 {
     mydata_t data = { 0 };
 

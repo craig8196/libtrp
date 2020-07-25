@@ -15,6 +15,7 @@ CC = gcc
 CFLAGS = -Wall -Wextra -Werror -pedantic -msse2 -fPIC -g $(DEBUG) $(OPS) $(PROF)
 IFLAGS = -I$(IDIR)
 LIBS = -lsodium
+TLIBS = -luv
 #STATIC = $(LDIR)/libtrp.a
 DYNAMIC = $(LDIR)/libtrp.so
 
@@ -91,7 +92,7 @@ check:
 
 .PHONY: test
 test: all
-	$(CC) $(CFLAGS) $(IFLAGS) $(DEFINES) -o $(TDIR)/$(TESTFILE).o $(TDIR)/$(TESTFILE).c $(DYNAMIC) $(LIBS)
+	$(CC) $(CFLAGS) $(IFLAGS) $(DEFINES) -o $(TDIR)/$(TESTFILE).o $(TDIR)/$(TESTFILE).c $(DYNAMIC) $(LIBS) $(TLIBS)
 	@echo "START TEST: $(TESTFILE)"
 	@$(TDIR)/$(TESTFILE).o && echo "PASSED" || echo "FAILED"
 ifdef prof

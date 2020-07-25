@@ -506,7 +506,7 @@ tripc_open_stream(trip_connection_t *_c, int sid, int options)
     {
         if (s)
         {
-            s->ud = NULL;
+            s->data = NULL;
             s->connection = c;
             s->id = sid;
             s->flags = options & _TRIPS_OPT_PUBMASK;

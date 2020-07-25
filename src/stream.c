@@ -174,6 +174,27 @@ trips_isopen(trip_stream_t *_s)
     return !(s->flags & _TRIPS_OPT_CLOSED);
 }
 
+int
+trips_id(trip_stream_t *_s)
+{
+    trip_tostream(s, _s);
+    return s->id;
+}
+
+enum trip_stream_status
+trips_status(trip_stream_t *_s)
+{
+    trip_tostream(s, _s);
+    return s->status;
+}
+
+int
+trips_type(trip_stream_t *_s)
+{
+    trip_tostream(s, _s);
+    return s->type;
+}
+
 /**
  * @brief User flagging the stream as finished.
  */

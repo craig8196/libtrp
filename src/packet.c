@@ -278,3 +278,17 @@ trip_packet_new_udp(const char *_info)
     return p;
 }
 
+void
+trip_packet_free_udp(trip_packet_t *p)
+{
+    _trip_udp_context_t *c = p->data;
+
+    if (c->info)
+    {
+        tripm_free(c->info);
+    }
+    
+    tripm_free(c);
+    tripm_free(p);
+}
+
