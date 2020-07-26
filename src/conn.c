@@ -459,6 +459,29 @@ _tripc_start(_trip_connection_t *c, bool isincoming)
     return code;
 }
 
+/**
+ * Get memory for a message.
+ * TODO slab allocate memory
+ * @return Uninitialized message struct.
+ */
+_trip_msg_t *
+_tripc_new_message(_trip_connection_t *c)
+{
+    c = c;
+    _trip_msg_t *m = tripm_alloc(sizeof(_trip_msg_t));
+    return m;
+}
+
+/**
+ * Release memory into the pool.
+ */
+void
+_tripc_free_message(_trip_connection_t *c, _trip_msg_t *m)
+{
+    c = c;
+    tripm_free(m);
+}
+
 /* CONNECTION PUBLIC */
 
 /**

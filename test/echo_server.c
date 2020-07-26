@@ -327,12 +327,16 @@ int main()
 {
     mydata_t data = { 0 };
 
-    data.loop = uv_default_loop();
+    data.loop = malloc(sizeof(uv_loop_t));
+    uv_loop_init(data.loop);
     uv_timer_init(data.loop, &data.timeout);
 
     server_init(&data);
     uv_run(data.loop, UV_RUN_DEFAULT);
     server_destroy(&data);
+
+    uv_loop_close(data.loop);
+    free(data.loop);
   
     return 0;
 }

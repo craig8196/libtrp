@@ -61,7 +61,7 @@ _trip_timeout(_trip_router_t *r, int ms, bool forstate)
 {
     if (forstate)
     {
-        r->timeout((trip_router_t *)r, ms);
+        r->timeout((trip_router_t *)r, (long)ms);
     }
     else
     {
@@ -664,7 +664,7 @@ _trip_watch_cb(trip_router_t *_r, int fd, int events, void *data)
 }
 
 void
-_trip_timeout_cb(trip_router_t *_r, int timeout)
+_trip_timeout_cb(trip_router_t *_r, long timeout)
 {
     trip_torouter(r, _r);
     _trip_wait_t *w = r->wait;
@@ -740,6 +740,7 @@ trip_new(enum trip_preset preset)
         }
 
         _trip_set_state(r, _TRIPR_STATE_START);
+        r->timeout_bind = 1000;
         // TODO set other settings
     } while (false);
 
@@ -798,22 +799,22 @@ trip_setopt(trip_router_t *_r, enum trip_router_opt opt, ...)
             }
             break;
         case TRIPOPT_WATCH_CB:
-            r->watch = va_arg(ap, trip_handle_watch_t);
+            r->watch = va_arg(ap, trip_handle_watch_t *);
             break;
         case TRIPOPT_TIMEOUT_CB:
-            r->timeout = va_arg(ap, trip_handle_timeout_t);
+            r->timeout = va_arg(ap, trip_handle_timeout_t *);
             break;
         case TRIPOPT_SCREEN_CB:
-            r->screen = va_arg(ap, trip_handle_screen_t);
+            r->screen = va_arg(ap, trip_handle_screen_t *);
             break;
         case TRIPOPT_CONNECTION_CB:
-            r->connection = va_arg(ap, trip_handle_connection_t);
+            r->connection = va_arg(ap, trip_handle_connection_t *);
             break;
         case TRIPOPT_STREAM_CB:
-            r->stream = va_arg(ap, trip_handle_stream_t);
+            r->stream = va_arg(ap, trip_handle_stream_t *);
             break;
         case TRIPOPT_MESSAGE_CB:
-            r->message = va_arg(ap, trip_handle_message_t);
+            r->message = va_arg(ap, trip_handle_message_t *);
             break;
         default:
             rval = EINVAL;

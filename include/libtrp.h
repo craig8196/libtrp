@@ -69,7 +69,7 @@ enum trip_socket_event
 
 /* TRiP Router Interface */
 typedef void trip_handle_watch_t(trip_router_t *, trip_socket_t, int, void *);
-typedef void trip_handle_timeout_t(trip_router_t *, int);
+typedef void trip_handle_timeout_t(trip_router_t *, long);
 
 typedef struct trip_screen_s
 {

@@ -25,6 +25,7 @@
  */
 #include "libtrp.h"
 #include "libtrp_memory.h"
+#include "libtrp_handles.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -226,7 +227,7 @@ trip_packet_new_udp(const char *_info)
         }
 
         /* Allocate packet struct. */
-        p = (trip_packet_t *)tripm_alloc(sizeof(trip_packet_t *));
+        p = (trip_packet_t *)tripm_alloc(sizeof(trip_packet_t));
         if (!p)
         {
             e = ENOMEM;
