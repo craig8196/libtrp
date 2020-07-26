@@ -272,6 +272,7 @@ router_handle_watch(trip_router_t *router, trip_socket_t s, int action, void *sp
         case TRIP_REMOVE:
             if (sp)
             {
+                /* Avoid memory leaks. */
                 mysocket_free((mysocket_t*)sp);
                 trip_assign(router, s, NULL);
             }
