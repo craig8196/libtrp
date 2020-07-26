@@ -122,7 +122,6 @@ _trip_udp_bind(trip_packet_t *packet)
 
         if (!choice)
         {
-            // TODO report error to router
             error = EINVAL;
             emsg = "No valid address to bind to.";
             break;
@@ -164,6 +163,9 @@ _trip_udp_bind(trip_packet_t *packet)
     if (!error)
     {
         trip_ready(packet->router);
+        trip_watch(packet->router,
+            ((_trip_udp_context_t *)packet->data)->fd,
+            TRIP_IN);
     }
     else
     {
@@ -171,7 +173,23 @@ _trip_udp_bind(trip_packet_t *packet)
     }
 }
 
-// TODO create unbind, resolve, send, read, wait??
+// TODO create resolve, send, read, wait??
+
+static void
+_trip_udp_unbind(trip_packet_t *packet)
+{
+    _trip_udp_context_t *c = packet->data;
+    int error = 0;
+    if (c->fd >= 0)
+    {
+        if (close(c->fd) < 0)
+        {
+            error = errno;
+        }
+    }
+
+    trip_unready(packet->router, error);
+}
 
 static bool
 _trip_udp_validate_info(const unsigned char *s)
@@ -261,7 +279,7 @@ trip_packet_new_udp(const char *_info)
         p->resolve = NULL;
         p->send = NULL;
         p->read = NULL;
-        p->unbind = NULL;
+        p->unbind = _trip_udp_unbind;
         p->wait = NULL;
         p->router = NULL;
     } while (0);

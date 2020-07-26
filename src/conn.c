@@ -498,10 +498,11 @@ tripc_status(trip_connection_t *c)
  * @brief Close the connection. Cleanup your data prior to calling.
  */
 void
-tripc_close(trip_connection_t *c)
+tripc_close(trip_connection_t *c, int gracems)
 {
     // TODO
     c = c;
+    gracems = gracems;
     //trip_toconn(c, _c);
 }
 

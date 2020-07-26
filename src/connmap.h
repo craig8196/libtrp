@@ -69,8 +69,14 @@ connmap_init(connmap_t *map, int max);
 void
 connmap_destroy(connmap_t *map);
 
+void
+connmap_clear(connmap_t *map);
+
 int
 connmap_iter_beg(connmap_t *map);
+
+_trip_connection_t *
+connmap_iter_get(connmap_t *map, int it);
 
 int
 connmap_iter_end(connmap_t *map);

@@ -42,6 +42,18 @@
 #include <sys/epoll.h>
 
 
+_trip_connection_t *
+_trip_new_connection()
+{
+    return tripm_alloc(sizeof(_trip_connection_t));
+}
+
+void
+_trip_free_connection(_trip_connection_t *c)
+{
+    tripm_free(c);
+}
+
 void
 _trip_set_error(_trip_router_t *r, int eval, const char *msg)
 {
@@ -122,33 +134,22 @@ _trip_listen(_trip_router_t *r, trip_socket_t fd, int events)
 }
 
 void
-_trip_notify(_trip_router_t *r)
+_trip_close(_trip_router_t *r, int gracems)
 {
-    r = r;
-    /** TODO iterate over connections
-    size_t i;
-    for (i = 0; i < r->concap; ++i)
+    int i = connmap_iter_beg(&r->con);
+    int end = connmap_iter_end(&r->con);
+    while (i != end)
     {
-        _trip_connection_t *c = r->con[i];
-        _tripc_notify(c);
+        _trip_connection_t *c = connmap_iter_get(&r->con, i);
+        tripc_close((trip_connection_t *)c, gracems);
+        if (0 == gracems)
+        {
+            _trip_free_connection(c);
+        }
+        ++i;
     }
-    */
-}
 
-void
-_trip_close(_trip_router_t *r)
-{
-    /* TODO
-    size_t i;
-    for (i = 0; i < r->concap; ++i)
-    {
-        _trip_connection_t *c = r->con[i];
-        tripc_close((trip_connection_t *)c);
-        tripm_free(c);
-    }
-    */
-
-    connmap_destroy(&r->con);
+    connmap_clear(&r->con);
 }
 
 static void
@@ -243,12 +244,6 @@ _trip_expand_connections(_trip_router_t *r)
     return 0;
 }
 #endif
-
-_trip_connection_t *
-_trip_new_connection()
-{
-    return tripm_alloc(sizeof(_trip_connection_t));
-}
 
 static void
 _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
@@ -421,6 +416,30 @@ _trip_set_state(_trip_router_t *r, enum _tripr_state state)
                 _trip_timeout(r, -1, true);
             }
             break;
+        case _TRIPR_STATE_LISTEN:
+            {
+                /* Do nothing.
+                 * Should be listening for socket events by this point.
+                 */
+            }
+            break;
+        case _TRIPR_STATE_CLOSE:
+            {
+                r->statedeadline = triptime_deadline(0);
+                _trip_timeout(r, -1, true);
+            }
+            break;
+        case _TRIPR_STATE_UNBIND:
+            {
+                r->statedeadline = triptime_deadline(0);
+                _trip_timeout(r, -1, true);
+            }
+            break;
+        case _TRIPR_STATE_END:
+            {
+                /* Technically you should never get here. */
+            }
+            break;
         case _TRIPR_STATE_ERROR:
             {
                 state = _TRIPR_STATE_ERROR;
@@ -433,6 +452,11 @@ _trip_set_state(_trip_router_t *r, enum _tripr_state state)
     /* When entering the state, do this. */
     switch (state)
     {
+        case _TRIPR_STATE_START:
+            {
+                /* Technically you should never get here. */
+            }
+            break;
         case _TRIPR_STATE_BIND:
             {
                 r->statedeadline = triptime_deadline(r->timeout_bind);
@@ -444,18 +468,28 @@ _trip_set_state(_trip_router_t *r, enum _tripr_state state)
                 r->statedeadline = 0;
             }
             break;
-        case _TRIPR_STATE_NOTIFY:
+        case _TRIPR_STATE_CLOSE:
             {
-                /* Possible next states: ERROR, NOTIFY.
+                /* Possible next states: ERROR, UNBIND.
                  *
-                 * Perform notify once.
+                 * Start closing connections.
                  */
-                if (r->timeout_notify > 0)
-                {
-                    _trip_notify(r);
-                    r->statedeadline = triptime_deadline(r->timeout_notify);
-                    _trip_timeout(r, r->timeout_notify, true);
-                }
+                _trip_close(r, r->timeout_close);
+                r->statedeadline = triptime_deadline(r->timeout_close);
+                _trip_timeout(r, r->timeout_close, true);
+            }
+            break;
+        case _TRIPR_STATE_UNBIND:
+            {
+                _trip_close(r, 0);
+                r->packet->unbind(r->packet);
+                r->statedeadline = triptime_deadline(r->timeout_unbind);
+                _trip_timeout(r, r->timeout_unbind, true);
+            }
+            break;
+        case _TRIPR_STATE_END:
+            {
+                /* No events for entering end. */
             }
             break;
         case _TRIPR_STATE_ERROR:
@@ -464,7 +498,7 @@ _trip_set_state(_trip_router_t *r, enum _tripr_state state)
                  * cleaned up by this point.
                  * The exception being unbinding.
                  */
-                // TODO check if bound and unbind
+                r->packet->unbind(r->packet);
             }
             break;
         default:
@@ -479,7 +513,7 @@ trip_seg(trip_router_t *_r, int src, size_t len, void *buf)
 {
     trip_torouter(r, _r);
 
-    if (_TRIPR_STATE_LISTEN == r->state || _TRIPR_STATE_NOTIFY == r->state)
+    if (_TRIPR_STATE_LISTEN == r->state || _TRIPR_STATE_CLOSE == r->state)
     {
         _trip_segment(r, src, len, (unsigned char *)buf);
     }
@@ -502,6 +536,9 @@ trip_ready(trip_router_t *_r)
 
 /*
  * TODO what was the point of this?? callback for packet to use?
+ * Point was to allow the packet interface to resolve connection info.
+ * Should be assigned a source entry or some information for
+ * sending data.
 void
 trip_resolve(trip_router_t *_r, trip_connection_t *_c, int err)
 {
@@ -522,15 +559,13 @@ trip_resolve(trip_router_t *_r, trip_connection_t *_c, int err)
 }
 */
 
-// TODO should events be an enum??
 void
 trip_watch(trip_router_t *_r, trip_socket_t fd, int events)
 {
     trip_torouter(r, _r);
 
-    // TODO fill in simple socket map
-
-    r->watch(_r, fd, events, NULL); // TODO
+    void *data = sockmap_get(&r->sockmap, fd);
+    r->watch(_r, fd, events, data);
 }
 
 void
@@ -538,8 +573,14 @@ trip_unready(trip_router_t *_r, int err)
 {
     trip_torouter(r, _r);
 
-    r->error = err;
-    _trip_set_state(r, _TRIPR_STATE_UNBIND);
+    if (err)
+    {
+        _trip_set_error(r, err, NULL);
+    }
+    else
+    {
+        _trip_set_state(r, _TRIPR_STATE_END);
+    }
 }
 
 void
@@ -905,7 +946,7 @@ trip_action(trip_router_t *_r, trip_socket_t fd, int events)
                 }
 
                 uint64_t now = triptime_now();
-                if (now > r->statedeadline)
+                if (now >= r->statedeadline)
                 {
                     _trip_set_error(r, ETIME, "Bind timeout.");
                     break;
@@ -917,7 +958,7 @@ trip_action(trip_router_t *_r, trip_socket_t fd, int events)
             break;
         case _TRIPR_STATE_LISTEN:
             {
-                /* Possible next states: ERROR, NOTIFY.
+                /* Possible next states: ERROR, CLOSE.
                  *
                  * If timeout, test deadline, try to read and send data.
                  * If fd, verify and check read and send for that item.
@@ -925,48 +966,68 @@ trip_action(trip_router_t *_r, trip_socket_t fd, int events)
                 _trip_listen(r, fd, events);
             }
             break;
-        case _TRIPR_STATE_NOTIFY:
+        case _TRIPR_STATE_CLOSE:
             {
-                /* Possible next states: ERROR, CLOSE, END.
+                /* Possible next states: ERROR, UNBIND.
                  *
                  * Perform same duties as LISTEN.
+                 * LISTEN first since packets for closing may be received.
                  */
                 _trip_listen(r, fd, events);
 
                 uint64_t now = triptime_now();
                 if (now >= r->statedeadline)
                 {
-                    _trip_set_state(r, _TRIPR_STATE_CLOSE);
+                    _trip_set_state(r, _TRIPR_STATE_UNBIND);
                 }
                 else
                 {
                     /* Continue waiting. */
+                    // TODO set timeout again
                 }
             }
             break;
-        case _TRIPR_STATE_CLOSE:
+        case _TRIPR_STATE_UNBIND:
             {
                 /* Possible next states: ERROR, END.
                  *
-                 * Perform close only
+                 * Wait for unbind event so we can officially be closed.
                  */
-                _trip_close(r);
-                _trip_set_state(r, _TRIPR_STATE_END);
+                uint64_t now = triptime_now();
+                if (now >= r->statedeadline)
+                {
+                    _trip_set_state(r, _TRIPR_STATE_END);
+                }
+                else
+                {
+                    /* Continue waiting. */
+                    // TODO set timeout again
+                }
             }
             break;
         case _TRIPR_STATE_END:
-            _trip_set_error(r, ESHUTDOWN, "Router is shutdown.");
+            {
+                /* Done, no further actions. */
+            }
             break;
         case _TRIPR_STATE_ERROR:
+            {
+                /* Error, no further actions. */
+            }
             break;
         default:
-            r->error = EINVAL;
+            {
+                _trip_set_error(r, EINVAL, "Invalid router state.");
+            }
             break;
     }
 
     return r->error;
 }
 
+/**
+ * Associate data with the socket descriptor.
+ */
 void
 trip_assign(trip_router_t *_r, trip_socket_t s, void *data)
 {
@@ -975,10 +1036,27 @@ trip_assign(trip_router_t *_r, trip_socket_t s, void *data)
     sockmap_put(&r->sockmap, s, data);
 }
 
+/**
+ * Start the router.
+ * @return Zero on success; errno otherwise.
+ */
 int
 trip_start(trip_router_t *_r)
 {
-    return trip_action(_r, TRIP_SOCKET_TIMEOUT, 0);
+    trip_torouter(r, _r);
+    if (_TRIPR_STATE_END == r->state)
+    {
+        r->state = _TRIPR_STATE_START;
+    }
+
+    if (_TRIPR_STATE_START == r->state)
+    {
+        return trip_action(_r, TRIP_SOCKET_TIMEOUT, 0);
+    }
+    else
+    {
+        return EINVAL;
+    }
 }
 
 int
@@ -1075,7 +1153,7 @@ trip_stop(trip_router_t *_r)
 
     if (r->state <= _TRIPR_STATE_LISTEN)
     {
-        _trip_set_state(r, _TRIPR_STATE_NOTIFY);
+        _trip_set_state(r, _TRIPR_STATE_CLOSE);
     }
     else
     {

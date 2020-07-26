@@ -150,7 +150,7 @@ enum trip_connection_status
 enum trip_connection_status
 tripc_status(trip_connection_t *c);
 void
-tripc_close(trip_connection_t *c);
+tripc_close(trip_connection_t *c, int gracems);
 #define TRIPS_OPT_PRIORITY (1 << 0)
 #define TRIPS_OPT_CHUNK    (1 << 1)
 #define TRIPS_OPT_ORDERED  (1 << 2)

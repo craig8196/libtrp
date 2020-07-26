@@ -52,7 +52,6 @@ enum _tripr_state
     _TRIPR_STATE_STOP,
     _TRIPR_STATE_BIND,
     _TRIPR_STATE_LISTEN,
-    _TRIPR_STATE_NOTIFY,
     _TRIPR_STATE_CLOSE,
     _TRIPR_STATE_UNBIND,
     _TRIPR_STATE_END,
@@ -133,12 +132,11 @@ struct _trip_router_s
     uint32_t max_connection_send;
     uint32_t max_message_id;
 
-    // TODO needed? used?
-    int timeout_bind;
+    // TODO move to own struct
     int timeout_data;
+    int timeout_bind;
     int timeout_close;
-    int timeout_stop;
-    int timeout_notify;
+    int timeout_unbind;
 
     /* Boolean flags. */
     uint32_t flag;
