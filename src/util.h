@@ -31,6 +31,9 @@ extern "C" {
 #endif
 
 
+#include <stdint.h>
+
+
 #ifdef UNUSED
 #elif defined(__GNUC__)
 # define UNUSED(x) UNUSED_ ## x __attribute__((unused))
@@ -51,6 +54,8 @@ extern "C" {
 
 int
 near_pwr2(int n);
+uint64_t
+near_pwr2_64(uint64_t n);
 
 
 #ifdef __cplusplus
