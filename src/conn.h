@@ -126,7 +126,7 @@ struct _trip_connection_s
      * Increment each floor with each successful packet received.
      */
     uint32_t seqfloor;
-    uint32_t seqlatest;
+    uint32_t window;
 
     /* Limits
      */
@@ -152,7 +152,7 @@ _tripc_flag_open_seq(_trip_connection_t *c, uint32_t seq);
 int
 _tripc_check_open_seq(_trip_connection_t *c, uint32_t seq);
 int
-_tripc_seg(_trip_connection_t *c, unsigned char control, int len, unsigned char *buf);
+_tripc_seg(_trip_connection_t *c, unsigned char control, int len, const unsigned char *buf);
 int
 _tripc_send(_trip_connection_t *c, size_t len, void *buf);
 

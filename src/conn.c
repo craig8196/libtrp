@@ -262,22 +262,9 @@ _tripc_init(_trip_connection_t *c, _trip_router_t *r, uint32_t id)
 int
 _tripc_check_open_seq(_trip_connection_t *c, uint32_t seq)
 {
-    // TODO not finished here
-    if (seq >= c->seqlatest)
-    {
-        return EINVAL;
-    }
-
     if (seq < c->seqfloor)
     {
         return EINVAL;
-    }
-
-    ++c->seqfloor;
-
-    if (c->seqfloor >= c->seqlatest)
-    {
-        c->seqfloor = 0;
     }
 
     return 0;
@@ -299,22 +286,15 @@ _tripc_check_open_seq(_trip_connection_t *c, uint32_t seq)
 void
 _tripc_flag_open_seq(_trip_connection_t *c, uint32_t seq)
 {
-    if (seq > c->seqlatest)
+    uint32_t offset = seq - c->seqfloor;
+    if (offset > c->window)
     {
-        c->seqlatest = seq;
-    }
-
-    ++c->seqfloor;
-    if (c->seqfloor >= c->seqlatest)
-    {
-    }
-    else
-    {
+        c->seqfloor += offset - c->window;
     }
 }
 
 int
-_tripc_seg(_trip_connection_t *c, unsigned char control, int len, unsigned char *buf)
+_tripc_seg(_trip_connection_t *c, unsigned char control, int len, const unsigned char *buf)
 {
     c = c;
     control = control;
