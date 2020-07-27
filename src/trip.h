@@ -41,7 +41,7 @@ typedef struct _trip_router_s _trip_router_t;
 typedef struct _trip_connection_s _trip_connection_t;
 typedef struct _trip_stream_s _trip_stream_t;
 typedef struct _trip_msg_s _trip_msg_t;
-typedef struct _trip_wait_s _trip_wait_t;
+typedef struct _trip_poll_s _trip_poll_t;
 typedef struct _trip_prefix_s _trip_prefix_t;
 typedef struct _trip_route_s _trip_route_t;
 typedef struct _trip_open_s _trip_open_t;
@@ -61,22 +61,18 @@ enum _tripr_state
 #define _TRIPR_FLAG_ALLOW_IN           (1 << 0)
 #define _TRIPR_FLAG_ALLOW_OUT          (1 << 1)
 #define _TRIPR_FLAG_ALLOW_PLAIN_OPEN   (1 << 2)
-#define _TRIPR_FLAG_ALLOW_PLAIN_SEG    (1 << 3)
-#define _TRIPR_FLAG_ALLOW_PLAIN_SIG    (1 << 4)
+#define _TRIPR_FLAG_ALLOW_PLAIN_SEGM   (1 << 3)
+#define _TRIPR_FLAG_ALLOW_PLAIN_SIGN   (1 << 4)
 #define _TRIPR_FLAG_FREE_PACKET        (1 << 5)
 
+#define _TRIPR_DEFAULT_MAX_CONN (1 << 19)
+
 #define _TRIP_MAX_EVENTS (16)
-struct _trip_wait_s
+struct _trip_poll_s
 {
     int efd;
     int timeout;
 };
-
-#define _TRIP_ALLOW_IN         (1 << 0)
-#define _TRIP_ALLOW_OUT        (1 << 1)
-#define _TRIP_ALLOW_PLAINOPEN  (1 << 2)
-#define _TRIP_ALLOW_PLAINSEGM  (1 << 3)
-#define _TRIP_ALLOW_PLAINSIGN  (1 << 4)
 
 struct _trip_router_s
 {
@@ -92,8 +88,7 @@ struct _trip_router_s
     trip_handle_message_t *message;
 
     /* Wait Data */
-    _trip_wait_t *wait;
-    int wtimeout;// TODO is this needed? there is a timeout field in wait
+    _trip_poll_t *poll;
 
     /* State */
     enum _tripr_state state;
@@ -123,8 +118,6 @@ struct _trip_router_s
 
     /* Limits */
     //limits_t lim; // TODO move below to limits structure
-    uint32_t max_mem;
-    uint32_t max_packet_mem;
     uint32_t max_conn;// TODO use uppermost bits on max_conn for connection ID randomization??
     uint32_t max_in;
     uint32_t max_out;

@@ -93,6 +93,7 @@ typedef void trip_handle_message_t(trip_stream_t *, enum trip_message_status, si
 
 enum trip_preset
 {
+    TRIP_PRESET_ROUTER,
     TRIP_PRESET_SERVER,
     TRIP_PRESET_CLIENT,
     TRIP_PRESET_MULTICLIENT,

@@ -249,7 +249,7 @@ static void
 _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
 {
     /* Discard too short segments immediately. */
-    if (len < 16)
+    if (len < 16) // TODO calculate the exact min length of a packet
     {
         // TODO add reporting codes
         _trip_router_reject(r, src, 0);
@@ -361,22 +361,15 @@ _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
         // TODO
 
 
-        /* Flag the sequence now that validation has taken place. */
-        _tripc_flag_open_seq(c, prefix.seq);
-
-        if (!seen)
+        if (_tripc_seg(c, prefix.control, 0, NULL))
         {
-            _tripc_seg(c, prefix.control, 0, NULL);
-        }
-        else
-        {
-            _trip_router_reject(r, src, 16);
-            return;
+            /* Flag the sequence now that validation has taken place. */
+            _tripc_flag_open_seq(c, prefix.seq);
         }
     }
     else
     {
-        if (!prefix.encrypted && !(r->flag & _TRIPR_FLAG_ALLOW_PLAIN_SEG))
+        if (!prefix.encrypted && !(r->flag & _TRIPR_FLAG_ALLOW_PLAIN_SEGM))
         {
             /* Not encrypted when required. */
             _trip_router_reject(r, src, 7);
@@ -668,7 +661,7 @@ void
 _trip_watch_cb(trip_router_t *_r, int fd, int events, void *data)
 {
     trip_torouter(r, _r);
-    _trip_wait_t *w = r->wait;
+    _trip_poll_t *w = r->poll;
 
     // TODO
     data = data;
@@ -708,14 +701,14 @@ void
 _trip_timeout_cb(trip_router_t *_r, long timeout)
 {
     trip_torouter(r, _r);
-    _trip_wait_t *w = r->wait;
+    _trip_poll_t *w = r->poll;
     w->timeout = timeout;
 }
 
-_trip_wait_t *
-_trip_wait_new()
+_trip_poll_t *
+_trip_poll_new()
 {
-    _trip_wait_t *w = tripm_alloc(sizeof(_trip_wait_t));
+    _trip_poll_t *w = tripm_alloc(sizeof(_trip_poll_t));
 
     w->efd = epoll_create1(0);
 
@@ -765,23 +758,40 @@ trip_new(enum trip_preset preset)
             break;
         }
 
+        /* Make sure we start at zero. */
         memset(r, 0, sizeof(_trip_router_t));
 
+        /* Set defaults. */
+        r->state = _TRIPR_STATE_START;
+        r->timeout_bind = 1000;
+        r->max_conn = _TRIPR_DEFAULT_MAX_CONN;
+        r->max_in = r->max_conn;
+        r->max_out = r->max_conn;
+
+        /* Modify values according to preset. */
         switch (preset)
         {
+            case TRIP_PRESET_ROUTER:
+                /* No changes, default. */
+                break;
             case TRIP_PRESET_SERVER:
+                r->max_out = 0;
+                r->flag &= ~_TRIPR_FLAG_ALLOW_OUT;
                 break;
             case TRIP_PRESET_CLIENT:
+                r->max_out = 1;
+                r->max_in = 0;
+                r->flag &= ~_TRIPR_FLAG_ALLOW_IN;
                 break;
             case TRIP_PRESET_MULTICLIENT:
+                r->max_in = 0;
+                r->flag &= ~_TRIPR_FLAG_ALLOW_IN;
                 break;
             default:
-                (*r) = (const _trip_router_t){ 0 };
                 break;
         }
 
-        _trip_set_state(r, _TRIPR_STATE_START);
-        r->timeout_bind = 1000;
+        connmap_init(&r->con, r->max_conn);
         // TODO set other settings
     } while (false);
 
@@ -804,6 +814,8 @@ trip_free(trip_router_t *_r)
     {
         tripm_free(r->errmsg);
     }
+
+    connmap_destroy(&r->con);
 
     tripm_free(r);
 }
@@ -1068,12 +1080,12 @@ trip_run(trip_router_t *_r, int maxtimeout)
 
     do
     {
-        if (!r->wait)
+        if (!r->poll)
         {
             r->watch = _trip_watch_cb;
             r->timeout = _trip_timeout_cb;
-            r->wait = _trip_wait_new();
-            if (!r->wait)
+            r->poll = _trip_poll_new();
+            if (!r->poll)
             {
                 r->watch = NULL;
                 r->timeout = NULL;
@@ -1082,7 +1094,7 @@ trip_run(trip_router_t *_r, int maxtimeout)
             }
         }
 
-        _trip_wait_t *w = r->wait;
+        _trip_poll_t *w = r->poll;
 
         uint64_t now = 0;
         uint64_t deadline = triptime_deadline(maxtimeout);
@@ -1177,6 +1189,20 @@ trip_open_connection(trip_router_t *_r, void *ud, size_t ilen,
     if (r->flag & _TRIPR_FLAG_ALLOW_OUT)
     {
         _trip_connection_t *c = _trip_new_connection(r);
+        if (NULL == c)
+        {
+            /* Out of connections. */
+            // TODO
+            return;
+        }
+
+        if (connmap_add(&r->con, c))
+        {
+            /* Error. */
+            // TODO set error and return connection to user.
+            // TODO free connection
+            return;
+        }
         // TODO acquire connection and ID...
         r->packet->resolve(r->packet->data, (trip_connection_t *)c);
     }
@@ -1184,6 +1210,9 @@ trip_open_connection(trip_router_t *_r, void *ud, size_t ilen,
     {
         // TODO how to fail gracefully... temporary connection in error state...
         //r->connection(r->ud, NULL, info, ud, false);
+        // TODO return connection to user..?
+        // TODO user a temporary stack allocated connection struct to return to user...
+        return;
     }
 }
 
