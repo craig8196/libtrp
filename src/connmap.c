@@ -4,16 +4,18 @@
 #include <errno.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <sodium.h>
 
+#include "libtrp_memory.h"
 #include "util.h"
 
 
 
 void
-connmap_init(connmap_t *map, int max)
+connmap_init(connmap_t *map, uint64_t max)
 {
     *map = (connmap_t){ 0 };
-    map->mask = near_pwr2(max);
+    map->mask = near_pwr2_64(max);
 }
 
 void
@@ -35,7 +37,11 @@ connmap_max(connmap_t *map)
 static uint64_t
 connmap_random()
 {
-    return 0;
+    uint64_t r = 0;
+    uint32_t *p = (uint32_t *)&r;
+    p[0] = randombytes_random();
+    p[1] = randombytes_random();
+    return r;
 }
 
 int
@@ -44,12 +50,21 @@ connmap_iter_beg(connmap_t * UNUSED(map))
     return 0;
 }
 
+_trip_connection_t *
+connmap_iter_get(connmap_t *map, int it)
+{
+    return map->map[it];
+}
+
 int
 connmap_iter_end(connmap_t *map)
 {
     return map->cap;
 }
 
+/**
+ * Add the connection to the map assigning it a unique ID.
+ */
 int
 connmap_add(connmap_t *map, _trip_connection_t *conn)
 {
@@ -72,7 +87,7 @@ connmap_add(connmap_t *map, _trip_connection_t *conn)
             /* Check if map exists. */
             if (map->map)
             {
-                void *m = realloc(map->map, sizeof(_trip_connection_t *) * (map->cap * 2));
+                void *m = tripm_realloc(map->map, sizeof(_trip_connection_t *) * (map->cap * 2));
                 
                 if (!m)
                 {
@@ -92,7 +107,7 @@ connmap_add(connmap_t *map, _trip_connection_t *conn)
             }
             else
             {
-                void *m = malloc(sizeof(_trip_connection_t *));
+                void *m = tripm_alloc(sizeof(_trip_connection_t *));
 
                 if (!m)
                 {

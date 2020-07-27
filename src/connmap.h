@@ -51,8 +51,6 @@ typedef struct connmap_s
 {
     /* Mask for indexing. +1 for max number of entries, determines upper bits. */
     uint64_t mask;
-    /* The number of upper bits that can be random. */
-    int bits;
     /* Size of the map. */
     int size;
     /* Capacity of the map. */
@@ -64,7 +62,7 @@ typedef struct connmap_s
 } connmap_t;
 
 void
-connmap_init(connmap_t *map, int max);
+connmap_init(connmap_t *map, uint64_t max);
 
 void
 connmap_destroy(connmap_t *map);
