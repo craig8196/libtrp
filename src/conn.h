@@ -31,6 +31,9 @@ extern "C" {
 #endif
 
 
+#include <stddef.h>
+
+
 #include "core.h"
 #include "streammap.h"
 
@@ -60,12 +63,11 @@ enum _tripc_state
 struct _trip_connection_s
 {
     /* Frequently Accessed */
-    void *ud;
-    _trip_router_t *router;
-
-    /* Address */
-    size_t infolen;
+    void *data;
+    int src; /* Where we are connected to. */
+    size_t ilen;
     unsigned char *info;
+    _trip_router_t *router;
 
     /* Error */
     int error;

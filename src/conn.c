@@ -247,7 +247,7 @@ _tripc_send(_trip_connection_t *c, size_t len, void *buf)
 void
 _tripc_init(_trip_connection_t *c, _trip_router_t *r, uint32_t id)
 {
-    c->ud = NULL;
+    c->data = NULL;
     c->router = r;
     c->id = id;
     c->next = NULL;

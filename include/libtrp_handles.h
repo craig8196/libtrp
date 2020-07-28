@@ -31,6 +31,9 @@ extern "C" {
 #endif
 
 
+#include <stddef.h>
+
+
 /* TRiP Forward-Declared Handles */
 typedef struct trip_router_handle_s
 {
@@ -40,6 +43,9 @@ typedef struct trip_router_handle_s
 typedef struct trip_connection_handle_s
 {
     void *data;
+    int src;
+    size_t ilen;
+    unsigned char *info;
 } trip_connection_t;
 
 typedef struct trip_stream_handle_s

@@ -28,6 +28,14 @@ connmap_destroy(connmap_t *map)
     }
 }
 
+void
+connmap_clear(connmap_t *map)
+{
+    uint64_t max = map->mask + 1;
+    connmap_destroy(map);
+    connmap_init(map, max);
+}
+
 static int
 connmap_max(connmap_t *map)
 {

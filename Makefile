@@ -37,7 +37,7 @@ endif
 endif
 
 DEFINES =
-TESTFILE =test_memory
+TESTFILE = reliable
 ifdef target
 ifneq ($(strip $(target)),)
 TESTFILE =$(target)

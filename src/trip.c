@@ -108,7 +108,7 @@ _trip_listen(_trip_router_t *r, trip_socket_t fd, int events)
         int code = _tripc_send(c, len, buf);
         if (!code)
         {
-            int error = p->send(p->data, len, buf);
+            int error = p->send(p->data, c->src, len, buf);
 
             if (error)
             {
@@ -1176,15 +1176,10 @@ trip_stop(trip_router_t *_r)
 }
 
 void
-trip_open_connection(trip_router_t *_r, void *ud, size_t ilen,
-                     const unsigned char *info)
+trip_open_connection(trip_router_t *_r, void *data, size_t ilen,
+                     unsigned char *info)
 {
     trip_torouter(r, _r);
-
-    // TODO
-    ud = ud;
-    ilen = ilen;
-    info = info;
 
     if (r->flag & _TRIPR_FLAG_ALLOW_OUT)
     {
@@ -1195,6 +1190,10 @@ trip_open_connection(trip_router_t *_r, void *ud, size_t ilen,
             // TODO
             return;
         }
+
+        c->data = data;
+        c->ilen = ilen;
+        c->info = info;
 
         if (connmap_add(&r->con, c))
         {

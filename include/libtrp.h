@@ -137,7 +137,7 @@ int
 trip_stop(trip_router_t *r);
 
 void
-trip_open_connection(trip_router_t *r, void *ud, size_t ilen, const unsigned char *info);
+trip_open_connection(trip_router_t *r, void *ud, size_t ilen, unsigned char *info);
 
 
 /* TRiP Connection Interface */
