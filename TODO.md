@@ -1,4 +1,38 @@
 
+
+- [x] Open connection.
+    - [x] Init connection.
+- [x] Resolve connection.
+- [ ] Start connection open sequence.
+- [ ] Receive connection open packet (decrypt and process).
+- [ ] Send back challenge packet.
+- [ ] Receive challenge packet.
+- [ ] Send back ping packet.
+- [ ] Receive ping packet.
+- [ ] Make reliable interface use timeouts to keep epoll alive in trip_run.
+- [ ] Move trip_run code to separate file like trip_poll.c
+- [ ] Map out how to do the handshake.
+- [ ] Upon open notify user.
+- [ ] Open stream upon OPEN.
+- [ ] Send data on stream.
+- [ ] Receive data on stream.
+- [ ] Free data on stream after send.
+- [ ] 
+- [ ] 
+- [ ] 
+- [ ] 
+- [ ] Datastructure for connection messages and resends.
+- [ ] Datastructure for sliding sequence window.
+- [ ] Datastructure for zones.
+- [ ] 
+- [ ] Organize trip.c functions private/public.
+- [ ] Organize conn.c functions private/public.
+- [ ] 
+- [ ] Backflow controls.
+
+
+
+
 - [ ] https://man7.org/linux/man-pages/man2/sendmmsg.2.html
 - [ ] https://blog.cloudflare.com/how-to-receive-a-million-packets/
 - [x] Test memory interface.
