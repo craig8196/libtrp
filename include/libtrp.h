@@ -143,10 +143,16 @@ trip_open_connection(trip_router_t *r, void *ud, size_t ilen, unsigned char *inf
 /* TRiP Connection Interface */
 enum trip_connection_status
 {
-    TRIPC_STATUS_OPEN   = 0,
-    TRIPC_STATUS_CLOSED = 1,
-    TRIPC_STATUS_KILLED = 2,
-    TRIPC_STATUS_ERROR  = 3,
+    /* Incoming connections. */
+    TRIPC_STATUSI_OPEN   = 0,
+    TRIPC_STATUSI_CLOSED = 1,
+    TRIPC_STATUSI_KILLED = 2,
+    TRIPC_STATUSI_ERROR  = 3,
+    /* Outgoing connections. */
+    TRIPC_STATUSO_OPEN   = 4,
+    TRIPC_STATUSO_CLOSED = 5,
+    TRIPC_STATUSO_KILLED = 6,
+    TRIPC_STATUSO_ERROR  = 7,
 };
 enum trip_connection_status
 tripc_status(trip_connection_t *c);
@@ -163,10 +169,16 @@ tripc_open_stream(trip_connection_t *, int, int);
 /* TRiP Stream Interface */
 enum trip_stream_status
 {
-    TRIPS_STATUS_OPEN   = 0,
-    TRIPS_STATUS_CLOSED = 1,
-    TRIPS_STATUS_KILLED = 2,
-    TRIPS_STATUS_ERROR  = 3,
+    /* Incoming streams. */
+    TRIPS_STATUSI_OPEN   = 0,
+    TRIPS_STATUSI_CLOSED = 1,
+    TRIPS_STATUSI_KILLED = 2,
+    TRIPS_STATUSI_ERROR  = 3,
+    /* Outgoing streams. */
+    TRIPS_STATUSO_OPEN   = 4,
+    TRIPS_STATUSO_CLOSED = 5,
+    TRIPS_STATUSO_KILLED = 6,
+    TRIPS_STATUSO_ERROR  = 7,
 };
 
 int

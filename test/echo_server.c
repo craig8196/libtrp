@@ -72,13 +72,21 @@ server_handle_connection(trip_connection_t *c)
 {
     switch (tripc_status(c))
     {
-        case TRIPC_STATUS_OPEN:
+        case TRIPC_STATUSI_OPEN:
             break;
-        case TRIPC_STATUS_CLOSED:
+        case TRIPC_STATUSI_CLOSED:
             break;
-        case TRIPC_STATUS_KILLED:
+        case TRIPC_STATUSI_KILLED:
             break;
-        case TRIPC_STATUS_ERROR:
+        case TRIPC_STATUSI_ERROR:
+            break;
+        case TRIPC_STATUSO_OPEN:
+            break;
+        case TRIPC_STATUSO_CLOSED:
+            break;
+        case TRIPC_STATUSO_KILLED:
+            break;
+        case TRIPC_STATUSO_ERROR:
             break;
         default:
             abort();
@@ -93,13 +101,21 @@ server_handle_stream(trip_stream_t *s)
 {
     switch (trips_status(s))
     {
-        case TRIPS_STATUS_OPEN:
+        case TRIPS_STATUSI_OPEN:
             break;
-        case TRIPS_STATUS_CLOSED:
+        case TRIPS_STATUSI_CLOSED:
             break;
-        case TRIPS_STATUS_KILLED:
+        case TRIPS_STATUSI_KILLED:
             break;
-        case TRIPS_STATUS_ERROR:
+        case TRIPS_STATUSI_ERROR:
+            break;
+        case TRIPS_STATUSO_OPEN:
+            break;
+        case TRIPS_STATUSO_CLOSED:
+            break;
+        case TRIPS_STATUSO_KILLED:
+            break;
+        case TRIPS_STATUSO_ERROR:
             break;
         default:
             abort();

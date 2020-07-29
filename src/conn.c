@@ -107,14 +107,6 @@ _tripc_read(_trip_connection_t *c, size_t len, void *buf)
             {
             }
             break;
-        case _TRIPC_STATE_NOTIFY:
-            {
-            }
-            break;
-        case _TRIPC_STATE_DISCONNECT:
-            {
-            }
-            break;
         case _TRIPC_STATE_END:
             {
             }
@@ -159,14 +151,6 @@ _tripc_timeout(_trip_connection_t *c)
             }
             break;
         case _TRIPC_STATE_READY_PING:
-            {
-            }
-            break;
-        case _TRIPC_STATE_NOTIFY:
-            {
-            }
-            break;
-        case _TRIPC_STATE_DISCONNECT:
             {
             }
             break;
@@ -218,14 +202,6 @@ _tripc_send(_trip_connection_t *c, size_t len, void *buf)
             {
             }
             break;
-        case _TRIPC_STATE_NOTIFY:
-            {
-            }
-            break;
-        case _TRIPC_STATE_DISCONNECT:
-            {
-            }
-            break;
         case _TRIPC_STATE_END:
             {
             }
@@ -244,13 +220,25 @@ _tripc_send(_trip_connection_t *c, size_t len, void *buf)
     return c->error;
 }
 
+/**
+ * Initialize the connection information with defaults.
+ */
 void
-_tripc_init(_trip_connection_t *c, _trip_router_t *r, uint32_t id)
+_tripc_init(_trip_connection_t *c, _trip_router_t *r, bool incoming)
 {
-    c->data = NULL;
+    memset(c, 0, sizeof(*c));
     c->router = r;
-    c->id = id;
-    c->next = NULL;
+    c->incoming = incoming;
+    streammap_init(&c->streams, r->max_streams);
+}
+
+/**
+ * Destroy and free memory.
+ */
+void
+_tripc_destroy(_trip_connection_t *c)
+{
+    streammap_destroy(&c->streams);
 }
 
 /**
@@ -311,23 +299,54 @@ _tripc_seg(_trip_connection_t *c, unsigned char control, int len, const unsigned
 int
 _tripc_set_state(_trip_connection_t *c, enum _tripc_state state)
 {
+    /* When leaving the state, do this. */
+    switch(state)
+    {
+        case _TRIPC_STATE_START:
+            /* Do nothing */
+            break;
+        case _TRIPC_STATE_OPEN:
+            break;
+        case _TRIPC_STATE_CHAL:
+            break;
+        case _TRIPC_STATE_PING:
+            break;
+        case _TRIPC_STATE_READY:
+            break;
+        case _TRIPC_STATE_READY_PING:
+            break;
+        case _TRIPC_STATE_CLOSE:
+            break;
+        case _TRIPC_STATE_END:
+            break;
+        case _TRIPC_STATE_ERROR:
+            break;
+        default:
+            break;
+    }
+
     /* When entering the state, do this. */
     switch (state)
     {
         case _TRIPC_STATE_START:
+            /* Do nothing, shouldn't get here. */
             break;
-        /*
-    _TRIPC_STATE_START,
-    _TRIPC_STATE_OPEN,
-    _TRIPC_STATE_CHAL,
-    _TRIPC_STATE_PING,
-    _TRIPC_STATE_READY,
-    _TRIPC_STATE_READY_PING,
-    _TRIPC_STATE_NOTIFY,
-    _TRIPC_STATE_DISCONNECT,
-    _TRIPC_STATE_END,
-    _TRIPC_STATE_ERROR,
-    */
+        case _TRIPC_STATE_OPEN:
+            break;
+        case _TRIPC_STATE_CHAL:
+            break;
+        case _TRIPC_STATE_PING:
+            break;
+        case _TRIPC_STATE_READY:
+            break;
+        case _TRIPC_STATE_READY_PING:
+            break;
+        case _TRIPC_STATE_CLOSE:
+            break;
+        case _TRIPC_STATE_END:
+            break;
+        case _TRIPC_STATE_ERROR:
+            break;
         default:
             break;
     }
@@ -414,29 +433,23 @@ _tripc_send_clear(_trip_connection_t *c, _trip_msg_t *m)
 /**
  * @brief Start the connection. Timeouts and state will be set.
  */
-int
-_tripc_start(_trip_connection_t *c, bool isincoming)
+void
+_tripc_start(_trip_connection_t *c)
 {
-    int code = 0;
-
-    do
+    if (_TRIPC_STATE_START != c->state)
     {
-        if (_TRIPC_STATE_START != c->state)
-        {
-            code = EINVAL;
-            break;
-        }
+        _tripc_set_error(c, EINVAL);
+        // TODO close connection
+        return;
+    }
 
-        enum _tripc_state state = _TRIPC_STATE_OPEN;
-        if (isincoming)
-        {
-            state = _TRIPC_STATE_CHAL;
-        }
+    enum _tripc_state state = _TRIPC_STATE_OPEN;
+    if (c->incoming)
+    {
+        state = _TRIPC_STATE_CHAL;
+    }
 
-        code = _tripc_set_state(c, state);
-    } while (false);
-
-    return code;
+    _tripc_set_state(c, state);
 }
 
 /**
@@ -468,10 +481,10 @@ _tripc_free_message(_trip_connection_t *c, _trip_msg_t *m)
  * @return Status code.
  */
 enum trip_connection_status
-tripc_status(trip_connection_t *c)
+tripc_status(trip_connection_t *_c)
 {
-    c = c;// TODO
-    return TRIPC_STATUS_ERROR;
+    trip_toconn(c, _c);
+    return c->status;
 }
 
 /**

@@ -179,72 +179,6 @@ _trip_router_get_by_address(_trip_router_t *r, int src)
     return NULL;
 }
 
-#if 0
-/**
- * @brief Expand the connection array size.
- * @return Zero on success.
- */
-int
-_trip_expand_connections(_trip_router_t *r)
-{
-    if (!r->con)
-    {
-        r->con = tripm_alloc(sizeof(_trip_connection_t *));
-    
-        if (r->con)
-        {
-            r->con[0] = tripm_alloc(sizeof(_trip_connection_t));
-
-            if (r->con[0])
-            {
-                _tripc_init(r->con[0], r, 0);
-                r->concap = 1;
-                r->conlen = 0;
-                r->confree = r->con[0];
-            }
-            else
-            {
-                tripm_free(r->con);
-                r->con = NULL;
-                return ENOMEM;
-            }
-        }
-        else
-        {
-            return ENOMEM;
-        }
-    }
-    else
-    {
-        if (r->concap < 0x80000000)
-        {
-            /* Expand the array. */
-            r->concap <<= 1;
-            void *con = trip_realloc(r->con, r->concap * sizeof(_trip_connection_t *));
-
-            if (con)
-            {
-                r->conmask = r->concap - 1;
-                r->con = con;
-                r->conempty = &r->con[r->concap >> 1];
-            }
-            else
-            {
-                r->concap >>= 1;
-                return ENOMEM;
-            }
-
-        }
-        else
-        {
-            return ENOSPC;
-        }
-    }
-
-    return 0;
-}
-#endif
-
 static void
 _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
 {
@@ -532,6 +466,7 @@ trip_ready(trip_router_t *_r)
  * Point was to allow the packet interface to resolve connection info.
  * Should be assigned a source entry or some information for
  * sending data.
+ */
 void
 trip_resolve(trip_router_t *_r, trip_connection_t *_c, int err)
 {
@@ -544,13 +479,12 @@ trip_resolve(trip_router_t *_r, trip_connection_t *_c, int err)
     }
     else
     {
-        c->error = err;
-        c->state = _TRIPR_STATE_ERROR;
-        r->connection(r->ud, (trip_connection_t *)c);
-        _tripc_emptyq_add(r, c);
+        _tripc_set_error(c, err);
+        r->connection((trip_connection_t *)c);
+        _tripc_destroy(c);
+        _trip_free_connection(c);
     }
 }
-*/
 
 void
 trip_watch(trip_router_t *_r, trip_socket_t fd, int events)
@@ -735,20 +669,6 @@ _trip_poll_new()
 trip_router_t *
 trip_new(enum trip_preset preset)
 {
-    /*
-     * TODO move to setopt function
-    if (!p)
-    {
-        
-        p = trip_packet_new_udp(NULL);
-        if (!p)
-        {
-            return NULL;
-        }
-    }
-        r->pack = p;
-    */
-
     _trip_router_t *r = tripm_alloc(sizeof(_trip_router_t));
 
     do
@@ -767,6 +687,7 @@ trip_new(enum trip_preset preset)
         r->max_conn = _TRIPR_DEFAULT_MAX_CONN;
         r->max_in = r->max_conn;
         r->max_out = r->max_conn;
+        r->max_streams = _TRIPR_DEFAULT_MAX_STREAM;
 
         /* Modify values according to preset. */
         switch (preset)
@@ -1175,6 +1096,22 @@ trip_stop(trip_router_t *_r)
     return c;
 }
 
+/**
+ * Reject an open connection request when there is no connection struct.
+ */
+void
+_trip_reject_connection(_trip_router_t *r, void *data, size_t ilen,
+                        unsigned char *info, int err)
+{
+    _trip_connection_t c;
+    _tripc_init(&c, r, true);
+    c.data = data;
+    c.ilen = ilen;
+    c.info = info;
+    _tripc_set_error(&c, err);
+    r->connection((trip_connection_t *)&c);
+}
+
 void
 trip_open_connection(trip_router_t *_r, void *data, size_t ilen,
                      unsigned char *info)
@@ -1187,30 +1124,35 @@ trip_open_connection(trip_router_t *_r, void *data, size_t ilen,
         if (NULL == c)
         {
             /* Out of connections. */
-            // TODO
+            _trip_reject_connection(r, data, ilen, info, ENOMEM);
             return;
         }
 
+        _tripc_init(c, r, true);
         c->data = data;
         c->ilen = ilen;
         c->info = info;
 
+        /* Acquire connection ID on this router. */
         if (connmap_add(&r->con, c))
         {
             /* Error. */
-            // TODO set error and return connection to user.
-            // TODO free connection
+            _tripc_set_error(c, EBUSY);
+            r->connection((trip_connection_t *)c);
+            tripm_free(c);
             return;
         }
-        // TODO acquire connection and ID...
+
+        /* Pass connection object to packet interface to 
+         * interpret the info and create comms entry
+         * for this connection.
+         */
         r->packet->resolve(r->packet->data, (trip_connection_t *)c);
+        return;
     }
     else
     {
-        // TODO how to fail gracefully... temporary connection in error state...
-        //r->connection(r->ud, NULL, info, ud, false);
-        // TODO return connection to user..?
-        // TODO user a temporary stack allocated connection struct to return to user...
+        _trip_reject_connection(r, data, ilen, info, EINVAL);
         return;
     }
 }

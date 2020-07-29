@@ -66,6 +66,7 @@ enum _tripr_state
 #define _TRIPR_FLAG_FREE_PACKET        (1 << 5)
 
 #define _TRIPR_DEFAULT_MAX_CONN (1 << 19)
+#define _TRIPR_DEFAULT_MAX_STREAM (8)
 
 #define _TRIP_MAX_EVENTS (16)
 struct _trip_poll_s
@@ -124,6 +125,7 @@ struct _trip_router_s
     uint32_t max_packet_read_count;
     uint32_t max_connection_send;
     uint32_t max_message_id;
+    uint32_t max_streams;
 
     // TODO move to own struct
     int timeout_data;

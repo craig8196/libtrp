@@ -52,8 +52,11 @@ enum _tripc_state
     _TRIPC_STATE_PING,
     _TRIPC_STATE_READY,
     _TRIPC_STATE_READY_PING,
+    _TRIPC_STATE_CLOSE,
+    /* needed?
     _TRIPC_STATE_NOTIFY,
     _TRIPC_STATE_DISCONNECT,
+    */
     _TRIPC_STATE_END,
     _TRIPC_STATE_ERROR,
 };
@@ -68,6 +71,10 @@ struct _trip_connection_s
     size_t ilen;
     unsigned char *info;
     _trip_router_t *router;
+    
+    /* Status */
+    enum trip_connection_status status;
+    bool incoming;
 
     /* Error */
     int error;
@@ -136,8 +143,15 @@ struct _trip_connection_s
 };
 
 
-int
-_tripc_start(_trip_connection_t *c, bool isincoming);
+void
+_tripc_init(_trip_connection_t *c, _trip_router_t *r, bool incoming);
+void
+_tripc_destroy(_trip_connection_t *c);
+
+void
+_tripc_set_error(_trip_connection_t *c, int err);
+void
+_tripc_start(_trip_connection_t *c);
 int
 _tripc_set_state(_trip_connection_t *c, enum _tripc_state state);
 void
