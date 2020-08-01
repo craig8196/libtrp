@@ -31,6 +31,7 @@ extern "C" {
 #endif
 
 
+#include <stddef.h>
 #include <stdint.h>
 
 
@@ -50,6 +51,16 @@ extern "C" {
 #define LIKELY(x)   (x)
 #define UNLIKELY(x) (x)
 #endif
+
+#ifndef NPOS
+#define NPOS ((size_t)-1)
+#endif
+
+/**
+ * Conditional free.
+ */
+void *
+tripm_cfree(void *p);
 
 
 int

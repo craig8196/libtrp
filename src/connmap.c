@@ -137,7 +137,7 @@ connmap_add(connmap_t *map, _trip_connection_t *conn)
         uint64_t index = (slot) - map->map;
         uint64_t r = connmap_random();
         uint64_t id = index ^ (r & ~map->mask);
-        conn->id = id;
+        conn->self.id = id;
         *slot = conn;
         /* Increase size. */
         ++map->size;
@@ -155,7 +155,7 @@ connmap_del(connmap_t *map, uint64_t id)
     if (index < map->cap)
     {
         _trip_connection_t *c = map->map[index];
-        if (id == c->id)
+        if (id == c->self.id)
         {
             _trip_connection_t **slot = &map->map[index];
             if (map->free)
@@ -190,7 +190,7 @@ connmap_get(connmap_t *map, uint64_t id)
     if (LIKELY(index < map->cap))
     {
         _trip_connection_t *c = map->map[index];
-        if (LIKELY(id == c->id))
+        if (LIKELY(id == c->self.id))
         {
             return c;
         }

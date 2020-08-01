@@ -16,32 +16,29 @@
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
  * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * OUT OF OR IN POLL WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  ******************************************************************************/
 /**
- * @file pack.h
+ * @file trip_poll.h
  * @author Craig Jacobson
- * @brief Packing and unpacking utilities.
+ * @brief Poll interface when using trip_run.
  */
-#ifndef _LIBTRP_PACK_H_
-#define _LIBTRP_PACK_H_
+#ifndef _LIBTRP_POLL_H_
+#define _LIBTRP_POLL_H_
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 
-int
-trip_pack_len(char *format);
-int
-trip_pack(int cap, unsigned char *buf, char *format, ...);
-// TODO change len arg to size_t? I'm inconsistent in int vs size_t...
-int
-trip_unpack(int blen, const unsigned char *buf, char *format, ...);
+
+    // TODO anything needed here?
+
 
 
 #ifdef __cplusplus
 }
 #endif
-#endif /* _LIBTRP_PACK_H_ */
+#endif /* _LIBTRP_POLL_H_ */
+
 

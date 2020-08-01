@@ -39,7 +39,6 @@
 #include <errno.h>
 #include <stdarg.h>
 #include <string.h>
-#include <sys/epoll.h>
 
 
 _trip_connection_t *
@@ -52,6 +51,12 @@ void
 _trip_free_connection(_trip_connection_t *c)
 {
     tripm_free(c);
+}
+
+void
+_trip_qconnection(_trip_router_t *r, _trip_connection_t *c)
+{
+    sendq_nq(&r->sendq, c);
 }
 
 void
@@ -94,42 +99,49 @@ _trip_timeout(_trip_router_t *r, int ms, bool forstate)
 void
 _trip_listen(_trip_router_t *r, trip_socket_t fd, int events)
 {
-    /* Let the packet interface read. */
-    r->packet->read(r->packet, fd, events, r->max_packet_read_count);
-
-    /* Rate limit number of send. */
-    _trip_connection_t *c = sendq_dq(&r->sendq);
-    trip_packet_t *p = r->packet;
-    while (c)
-    {
-        // TODO get actual buffer? i think _tripc_send is populating the buffer
-        size_t len = 0;
-        void *buf = NULL;
-        int code = _tripc_send(c, len, buf);
-        if (!code)
-        {
-            int error = p->send(p->data, c->src, len, buf);
-
-            if (error)
-            {
-                // TODO handle send error
-                break;
-            }
-
-            sendq_nq(&r->sendq, c);
-        }
-        else
-        {
-            // TODO check connection write error code
-            /* Don't re-enqueue. */
-        }
-
-        c = sendq_dq(&r->sendq);
-    }
-
     if (TRIP_SOCKET_TIMEOUT == fd)
     {
-        // TODO handle connection timeouts
+        // TODO ??? check if actuall socket timeout or connection???
+        return;
+    }
+
+    /* Let the packet interface read. */
+    if (events & TRIP_IN)
+    {
+        r->packet->read(r->packet, fd, r->max_packet_read_count);
+    }
+
+    if (events & TRIP_OUT)
+    {
+        /* Rate limit number of send. */
+        _trip_connection_t *c = sendq_dq(&r->sendq);
+        trip_packet_t *p = r->packet;
+        while (c)
+        {
+            // TODO get actual buffer? i think _tripc_send is populating the buffer
+            size_t len = 0;
+            void *buf = NULL;
+            int code = _tripc_send(c, len, buf);
+            if (!code)
+            {
+                int error = p->send(p->data, c->src, len, buf);
+
+                if (error)
+                {
+                    // TODO handle send error
+                    break;
+                }
+
+                sendq_nq(&r->sendq, c);
+            }
+            else
+            {
+                // TODO check connection write error code
+                /* Don't re-enqueue. */
+            }
+
+            c = sendq_dq(&r->sendq);
+        }
     }
 }
 
@@ -177,6 +189,19 @@ _trip_router_get_by_address(_trip_router_t *r, int src)
     r = r;
     src = src;
     return NULL;
+}
+
+/**
+ * Decrypt the OPEN buffer.
+ * @note The same buffer should be able to be used for inplace decryption.
+ * @return Zero on success; errno otherwise.
+ */
+int
+_trip_decrypt(_trip_router_t *r, size_t len, unsigned char *buf)
+{
+    // TODO
+    r = r; len = len; buf = buf;
+    return EINVAL;
 }
 
 static void
@@ -242,13 +267,13 @@ _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
         /* Unpack version and routing information. */
         uint16_t version = -1;
         _trip_route_t route;
-        int end2 = trip_unpack(len - end, buf + end, "HVp",
+        int endroute = trip_unpack(len - end, buf + end, "HVp",
                                &version,
                                &route.len,
                                &route.route);
 
         /* Discard if unpack failed. */
-        if (end2 <= 0)
+        if (endroute <= 0)
         {
             _trip_router_reject(r, src, 4);
             return;
@@ -273,6 +298,18 @@ _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
                 _trip_router_reject(r, src, 6);
                 return;
             }
+            _tripc_init(c, r, false);
+            c->src = src;
+        }
+        else
+        {
+            // TODO should I be notifying the packet manager of unused src? yes.
+            /* Update the source. */
+            c->src = src;
+            // TODO what is the best thing here? should I reparse OPEN?
+            // TODO should just resend challenge...
+            _tripc_set_send(c);
+            return;
         }
 
         /* Discard if this sequence has been seen. */
@@ -290,12 +327,23 @@ _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
          * User is allowed to create user data.
          */
         // TODO user validation
+        // TODO signature validation
 
         /* Decrypt OPEN buffer. */
-        // TODO
+        int blen = len - endroute;
+        void *b = buf + endroute;
+        if (prefix.encrypted)
+        {
+            if (_trip_decrypt(r, blen, b))
+            {
+                _trip_router_reject(r, src, 21);
+                return;
+            }
+            // TODO blen -= mac_bytes...
+            // TODO b += mac_bytes... ?
+        }
 
-
-        if (_tripc_seg(c, prefix.control, 0, NULL))
+        if (_tripc_seg(c, prefix.control, blen, b))
         {
             /* Flag the sequence now that validation has taken place. */
             _tripc_flag_open_seq(c, prefix.seq);
@@ -561,109 +609,6 @@ _trip_verify(_trip_router_t *r)
     }
 
     return code;
-}
-
-int
-_trip_fd_events_to_epoll(int events)
-{
-    int eout = 0;
-
-    switch (events)
-    {
-        case TRIP_REMOVE:
-            break;
-        case TRIP_IN:
-        case TRIP_OUT:
-        case TRIP_INOUT:
-            if (events != TRIP_IN)
-            {
-                eout |= EPOLLOUT;
-            }
-            if (events != TRIP_OUT)
-            {
-                eout |= EPOLLIN;
-            }
-            break;
-        default:
-            break;
-    }
-
-    return eout;
-}
-
-void
-_trip_watch_cb(trip_router_t *_r, int fd, int events, void *data)
-{
-    trip_torouter(r, _r);
-    _trip_poll_t *w = r->poll;
-
-    // TODO
-    data = data;
-
-    int c;
-    struct epoll_event ev = { 0 };
-
-    ev.events = _trip_fd_events_to_epoll(events);
-    ev.data.fd = fd;
-
-    if (TRIP_REMOVE != events)
-    {
-        // TODO
-        /*
-        if (TRIP_ADD & events)
-        {
-            c = epoll_ctl(w->efd, EPOLL_CTL_ADD, fd, &ev);
-        }
-        else
-        {
-            c = epoll_ctl(w->efd, EPOLL_CTL_MOD, fd, &ev);
-        }
-        */
-    }
-    else
-    {
-        c = epoll_ctl(w->efd, EPOLL_CTL_DEL, fd, &ev);
-    }
-
-    if (c)
-    {
-        printf("Error on epoll (%d): %s", c, strerror(c));
-    }
-}
-
-void
-_trip_timeout_cb(trip_router_t *_r, long timeout)
-{
-    trip_torouter(r, _r);
-    _trip_poll_t *w = r->poll;
-    w->timeout = timeout;
-}
-
-_trip_poll_t *
-_trip_poll_new()
-{
-    _trip_poll_t *w = tripm_alloc(sizeof(_trip_poll_t));
-
-    w->efd = epoll_create1(0);
-
-    int c = 0;
-
-    do
-    {
-        if (-1 == w->efd)
-        {
-            c = EINVAL;
-            break;
-        }
-    } while (false);
-
-    if (c)
-    {
-        tripm_free(w);
-        w = NULL;
-    }
-
-    return w;
 }
 
 trip_router_t *
@@ -990,91 +935,6 @@ trip_start(trip_router_t *_r)
     {
         return EINVAL;
     }
-}
-
-int
-trip_run(trip_router_t *_r, int maxtimeout)
-{
-    trip_torouter(r, _r);
-
-    int c = 0;
-
-    do
-    {
-        if (!r->poll)
-        {
-            r->watch = _trip_watch_cb;
-            r->timeout = _trip_timeout_cb;
-            r->poll = _trip_poll_new();
-            if (!r->poll)
-            {
-                r->watch = NULL;
-                r->timeout = NULL;
-                c = ENOMEM;
-                break;
-            }
-        }
-
-        _trip_poll_t *w = r->poll;
-
-        uint64_t now = 0;
-        uint64_t deadline = triptime_deadline(maxtimeout);
-        int timeout = maxtimeout;
-        
-        for (;;)
-        {
-            struct epoll_event eventlist[_TRIP_MAX_EVENTS];
-            int nfds = epoll_wait(w->efd, eventlist, _TRIP_MAX_EVENTS, timeout);
-
-            if (-1 == nfds)
-            {
-                c = errno;
-                break;
-            }
-
-            int n;
-            for (n = 0; n < nfds; ++n)
-            {
-                int events = 0;
-                int evs = eventlist[n].events;
-                int fd = eventlist[n].data.fd;
-
-                if (evs & EPOLLIN)
-                {
-                    events |= TRIP_IN;
-                }
-
-                if (evs & EPOLLOUT)
-                {
-                    events |= TRIP_OUT;
-                }
-
-                c = trip_action(_r, fd, events);
-                
-                if (c)
-                {
-                    break;
-                }
-            }
-
-            if (c)
-            {
-                break;
-            }
-
-            now = triptime_now();
-
-            if (now >= deadline)
-            {
-                break;
-            }
-
-            timeout = (int)(deadline - now);
-        }
-    } while (false);
-
-
-    return c;
 }
 
 int

@@ -40,6 +40,9 @@ extern "C" {
 #include "libtrp_packet.h"
 
 
+#define TRIP_VERSION_MAJOR (0)
+
+
 /* TRiP Global Init/Destroy */
 int
 trip_global_init(void);

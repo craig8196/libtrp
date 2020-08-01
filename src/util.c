@@ -1,8 +1,18 @@
 
 #include "util.h"
 
+#include "libtrp_memory.h"
+
 
 static const int MAX_SIZE = 1 << ((sizeof(int) * 8) - 2);
+
+void *
+tripm_cfree(void *p) {
+    if (p) {
+        tripm_free(p);
+    }
+    return NULL;
+}
 
 int
 near_pwr2(int n)

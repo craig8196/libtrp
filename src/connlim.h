@@ -20,28 +20,29 @@
  * SOFTWARE.
  ******************************************************************************/
 /**
- * @file pack.h
+ * @file connlim.h
  * @author Craig Jacobson
- * @brief Packing and unpacking utilities.
+ * @brief Limits.
  */
-#ifndef _LIBTRP_PACK_H_
-#define _LIBTRP_PACK_H_
+#ifndef _LIBTRP_CONNLIM_H_
+#define _LIBTRP_CONNLIM_H_
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 
-int
-trip_pack_len(char *format);
-int
-trip_pack(int cap, unsigned char *buf, char *format, ...);
-// TODO change len arg to size_t? I'm inconsistent in int vs size_t...
-int
-trip_unpack(int blen, const unsigned char *buf, char *format, ...);
+typedef struct connlim_s
+{
+    uint32_t credit;
+    uint32_t stream;
+    uint32_t message_size;
+    uint32_t message;
+} connlim_t;
 
 
 #ifdef __cplusplus
 }
 #endif
-#endif /* _LIBTRP_PACK_H_ */
+#endif /* _LIBTRP_CONNLIM_H_ */
+
 

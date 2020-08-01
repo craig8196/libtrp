@@ -20,28 +20,28 @@
  * SOFTWARE.
  ******************************************************************************/
 /**
- * @file pack.h
+ * @file ping.h
  * @author Craig Jacobson
- * @brief Packing and unpacking utilities.
+ * @brief Ping struct and info.
  */
-#ifndef _LIBTRP_PACK_H_
-#define _LIBTRP_PACK_H_
+#ifndef _LIBTRP_PING_H_
+#define _LIBTRP_PING_H_
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 
-int
-trip_pack_len(char *format);
-int
-trip_pack(int cap, unsigned char *buf, char *format, ...);
-// TODO change len arg to size_t? I'm inconsistent in int vs size_t...
-int
-trip_unpack(int blen, const unsigned char *buf, char *format, ...);
+typedef struct ping_s
+{
+    unsigned char *nonce;
+    uint64_t timestamp;
+} ping_t;
 
 
 #ifdef __cplusplus
 }
 #endif
-#endif /* _LIBTRP_PACK_H_ */
+#endif /* _LIBTRP_PING_H_ */
+
+
 

@@ -139,6 +139,8 @@ struct _trip_router_s
 
 void
 _trip_set_state(_trip_router_t *r, enum _tripr_state state);
+void
+_trip_qconnection(_trip_router_t *r, _trip_connection_t *c);
 
 #ifdef __cplusplus
 }

@@ -20,28 +20,52 @@
  * SOFTWARE.
  ******************************************************************************/
 /**
- * @file pack.h
+ * @file connpeer.h
  * @author Craig Jacobson
- * @brief Packing and unpacking utilities.
+ * @brief Peer information for connections.
  */
-#ifndef _LIBTRP_PACK_H_
-#define _LIBTRP_PACK_H_
+#ifndef _LIBTRP_CONNPEER_H_
+#define _LIBTRP_CONNPEER_H_
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 
-int
-trip_pack_len(char *format);
-int
-trip_pack(int cap, unsigned char *buf, char *format, ...);
-// TODO change len arg to size_t? I'm inconsistent in int vs size_t...
-int
-trip_unpack(int blen, const unsigned char *buf, char *format, ...);
+#include "connlim.h"
+#include "connstat.h"
+
+
+typedef struct connpeer_s
+{
+    /* Peer connection ID. */
+    uint64_t id;
+
+    /* Encryption. */
+    unsigned char *openpk;
+    unsigned char *pk;
+    unsigned char *sig;
+    unsigned char *nonce;
+
+    /* Sequences
+     * Starting at zero.
+     * If we encounter a sequence less than what we have we discard it.
+     * Currently not doing a bitset to save on space.
+     * Increment each floor with each successful packet received.
+     */
+    uint64_t seqfloor;
+    uint32_t window;
+
+    /* Limits */
+    connlim_t lim;
+
+    /* Stats */
+    connstat_t stat;
+} connpeer_t;
 
 
 #ifdef __cplusplus
 }
 #endif
-#endif /* _LIBTRP_PACK_H_ */
+#endif /* _LIBTRP_CONNPEER_H_ */
+
 

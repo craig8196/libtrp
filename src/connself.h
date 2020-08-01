@@ -20,28 +20,43 @@
  * SOFTWARE.
  ******************************************************************************/
 /**
- * @file pack.h
+ * @file connself.h
  * @author Craig Jacobson
- * @brief Packing and unpacking utilities.
+ * @brief Self information for connections.
  */
-#ifndef _LIBTRP_PACK_H_
-#define _LIBTRP_PACK_H_
+#ifndef _LIBTRP_CONNSELF_H_
+#define _LIBTRP_CONNSELF_H_
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 
-int
-trip_pack_len(char *format);
-int
-trip_pack(int cap, unsigned char *buf, char *format, ...);
-// TODO change len arg to size_t? I'm inconsistent in int vs size_t...
-int
-trip_unpack(int blen, const unsigned char *buf, char *format, ...);
+#include "connlim.h"
+#include "connstat.h"
+
+
+typedef struct connself_s
+{
+    /* Connection ID. */
+    uint64_t id;
+    uint64_t sequence;
+
+    /* Encryption. */
+    unsigned char *pk;
+    unsigned char *sk;
+    unsigned char *sig;
+    unsigned char *nonce;
+
+    /* Limits */
+    connlim_t lim;
+
+    /* Stats */
+    connstat_t stat;
+} connself_t;
 
 
 #ifdef __cplusplus
 }
 #endif
-#endif /* _LIBTRP_PACK_H_ */
+#endif /* _LIBTRP_CONNSELF_H_ */
 

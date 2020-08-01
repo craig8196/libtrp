@@ -34,8 +34,12 @@ extern "C" {
 #include <stddef.h>
 
 
+#include "connpeer.h"
+#include "connself.h"
 #include "core.h"
+#include "ping.h"
 #include "streammap.h"
+#include "messageq.h"
 
 
 enum _trip_message_q
@@ -65,8 +69,9 @@ enum _tripc_state
 
 struct _trip_connection_s
 {
-    /* Frequently Accessed */
+    /* Public and Frequently Accessed */
     void *data;
+    /* TODO Why is src in public section? */
     int src; /* Where we are connected to. */
     size_t ilen;
     unsigned char *info;
@@ -74,72 +79,46 @@ struct _trip_connection_s
     
     /* Status */
     enum trip_connection_status status;
-    bool incoming;
-
-    /* Error */
-    int error;
-    char *msg;
-
-    /* Connection ID
-     */
-    uint64_t id;
-    
-    /* Used to round-robin through connections when sending data.
-     * Re-used to link unused connection structs.
-     */
-    _trip_connection_t *next;
+    bool incoming;// if false, is primary pinger
+    bool encrypted;
 
     /* State */
     enum _tripc_state state;
     uint64_t statedeadline;
 
-    /* Streams
+    /* Error */
+    int error;
+    char *emsg;
+
+    /* Self information. */
+    connself_t self;
+
+    /* Peer information. */
+    connpeer_t peer;
+
+    /* Ping information. */
+    ping_t ping;
+
+    /* Used to round-robin through connections when sending data.
+     * Re-used to link unused connection structs.
      */
+    bool insend;
+    _trip_connection_t *next;
+
+    /* Stream Map */
     streammap_t streams;
+
+    /* Message Q */
+    messageq_t msg;
 
     /* Sometimes we're unable to send the buffer, store here until ready.
      * segfull is true if just waiting to send.
      * segment contains the final product.
      * segwork contains unencrypted portion.
+     *
+     * TODO needed? I don't think so.
      */
     bool segfull;
-
-    /* Message Queues
-     * Focus on sending one message at a time.
-     * Only send partial buffers if priority and nothing else will fit.
-     * Partial buffers will flush after max_message_buffer_wait ms.
-     * Resending messages, or partial messages,
-     * jumps to the front of the appropriate Q.
-     * 0 - Priority Q.
-     * 1 - Whenever Q.
-     * 
-     * Pull next partial message from Whenever Q when which indicator reaches zero.
-     * This helps avoid starvation.
-     * sendwhich & sendmask > 0 => priority next
-     * sendwhich & sendmask = 0 => whenever next
-     *
-     * If sendmask = 0x01, then queueing is fair.
-     * If sendmask = 0x03, then priority sends first 3/4 of time, whenever 1/4.
-     */
-    uint32_t sendmask;
-    uint32_t sendwhich;
-    _trip_msg_t *sendbeg[2];
-    _trip_msg_t *sendend[2];
-    uint32_t nextmsgid;
-    int zone;
-
-    /* Sequences
-     * Starting at zero.
-     * If we encounter a sequence less than what we have we discard it.
-     * Currently not doing a bitset to save on space.
-     * Increment each floor with each successful packet received.
-     */
-    uint32_t seqfloor;
-    uint32_t window;
-
-    /* Limits
-     */
-    uint32_t max_message_size;
 };
 
 
@@ -169,8 +148,10 @@ int
 _tripc_check_open_seq(_trip_connection_t *c, uint32_t seq);
 int
 _tripc_seg(_trip_connection_t *c, unsigned char control, int len, const unsigned char *buf);
-int
+size_t
 _tripc_send(_trip_connection_t *c, size_t len, void *buf);
+void
+_tripc_set_send(_trip_connection_t *c);
 
 
 #ifdef __cplusplus

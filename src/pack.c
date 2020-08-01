@@ -245,6 +245,7 @@ trip_pack_len(char *format)
 static int
 _trip_uvar_len(uint32_t n)
 {
+    // TODO this could be attack vector, limit loop
     int len = 0;
 
     while (n)
@@ -258,6 +259,13 @@ _trip_uvar_len(uint32_t n)
 
 /**
  * Pack data according to format.
+ *   b: Binary string (size_t, void *).
+ *   o: Encrypt open start.
+ *   O: Encrypt open end.
+ *   e: Encrypt start.
+ *   E: Encrypt end.
+ *   g: Signature start.
+ *   G: Signature end.
  *
  *   c: Signed octet.
  *   C: Unsigned octet.
@@ -271,6 +279,7 @@ _trip_uvar_len(uint32_t n)
  *   p: Pointer save. Unpack only.
  *   s: Skip. Unpack only.
  *   V: Unsigned variable int from 32-bit on pack. To 32-bit on unpack.
+ *   W: Unsigned variable int from 64-bit on pack. To 64-bit on unpack.
  *
  *   n: Nonce.
  *   k: Public key (box/seal).
@@ -420,6 +429,23 @@ trip_pack(int cap, unsigned char *buf, char *format, ...)
                 *buf = i;
                 ++buf;
                 for (; i < 5; ++i, I = I >> 8, ++buf)
+                {
+                    *buf = (0x000000FF & I);
+                }
+                break;
+
+            case 'W':
+                I = va_arg(ap, unsigned long long int);
+                i = _trip_uvar_len(I);
+                size += i + 1;
+                if (size > cap)
+                {
+                    size = -1;
+                    goto _trip_pack_end;
+                }
+                *buf = i;
+                ++buf;
+                for (; i < 9; ++i, I = I >> 8, ++buf)
                 {
                     *buf = (0x000000FF & I);
                 }

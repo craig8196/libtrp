@@ -20,28 +20,51 @@
  * SOFTWARE.
  ******************************************************************************/
 /**
- * @file pack.h
+ * @file messageq.h
  * @author Craig Jacobson
- * @brief Packing and unpacking utilities.
+ * @brief Manage messages.
  */
-#ifndef _LIBTRP_PACK_H_
-#define _LIBTRP_PACK_H_
+#ifndef _LIBTRP_MESSAGEQ_H_
+#define _LIBTRP_MESSAGEQ_H_
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 
-int
-trip_pack_len(char *format);
-int
-trip_pack(int cap, unsigned char *buf, char *format, ...);
-// TODO change len arg to size_t? I'm inconsistent in int vs size_t...
-int
-trip_unpack(int blen, const unsigned char *buf, char *format, ...);
+#include "core.h"
+
+
+typedef struct messageq_s
+{
+    /* Message Queues
+     * Focus on sending one message at a time.
+     * Only send partial buffers if priority and nothing else will fit.
+     * Partial buffers will flush after max_message_buffer_wait ms.
+     * Resending messages, or partial messages,
+     * jumps to the front of the appropriate Q.
+     * 0 - Priority Q.
+     * 1 - Whenever Q.
+     * 
+     * Pull next partial message from Whenever Q when which indicator reaches zero.
+     * This helps avoid starvation.
+     * sendwhich & sendmask > 0 => priority next
+     * sendwhich & sendmask = 0 => whenever next
+     *
+     * If sendmask = 0x01, then queueing is fair.
+     * If sendmask = 0x03, then priority sends first 3/4 of time, whenever 1/4.
+     */
+    uint32_t sendmask;
+    uint32_t sendwhich;
+    _trip_msg_t *sendbeg[2];
+    _trip_msg_t *sendend[2];
+    uint32_t nextmsgid;
+    int zone;
+} messageq_t;
 
 
 #ifdef __cplusplus
 }
 #endif
-#endif /* _LIBTRP_PACK_H_ */
+#endif /* _LIBTRP_MESSAGEQ_H_ */
+
 

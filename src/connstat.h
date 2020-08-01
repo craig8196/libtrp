@@ -20,28 +20,28 @@
  * SOFTWARE.
  ******************************************************************************/
 /**
- * @file pack.h
+ * @file connstat.h
  * @author Craig Jacobson
- * @brief Packing and unpacking utilities.
+ * @brief Stats like rtt and send/recv counts.
  */
-#ifndef _LIBTRP_PACK_H_
-#define _LIBTRP_PACK_H_
+#ifndef _LIBTRP_CONNSTAT_H_
+#define _LIBTRP_CONNSTAT_H_
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 
-int
-trip_pack_len(char *format);
-int
-trip_pack(int cap, unsigned char *buf, char *format, ...);
-// TODO change len arg to size_t? I'm inconsistent in int vs size_t...
-int
-trip_unpack(int blen, const unsigned char *buf, char *format, ...);
+typedef struct connstat_s
+{
+    uint32_t rtt;
+    uint32_t sent;
+    uint32_t recv;
+} connstat_t;
 
 
 #ifdef __cplusplus
 }
 #endif
-#endif /* _LIBTRP_PACK_H_ */
+#endif /* _LIBTRP_CONNSTAT_H_ */
+
 

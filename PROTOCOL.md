@@ -68,9 +68,9 @@ Retransmission may be customized for real-time applications.
 RTT + Estimated Response Time + Timing Variance could be a good alternative.
 
 **Transmission rates:**
-Controlled by currency.
-If out-of-currency, for unreliable, earn at rate of currency per RTT.
-If out-of-currency, for reliable, earn when data is confirmed for delivery.
+Controlled by credit.
+If out-of-credit, for unreliable, earn at rate of credit per RTT.
+If out-of-credit, for reliable, earn when data is confirmed for delivery.
 
 **Rount-trip time (RTT) and transmission rates:**
 RTT is round trip time and only one packet should be sent for each RTT on light data loads.
@@ -82,7 +82,7 @@ The client should only send the last received per tick.
 The server, if receiving multiple messages, should deliver the latest complete messages and discard any earlier messages.
 
 **Inc/dec transmission rates:**
-The server may increase or decrease currency rates at any time.
+The server may increase or decrease credit rates at any time.
 The server may increase or decrease streams allowed at any time.
 Zero indicates that the streams are blocked.
 The client may increase or decrease, however, this could be considered a breach of custom protocol.
@@ -95,9 +95,9 @@ Exponential backoff should be used when resending.
 The peer should still report statistics (sent/received) every ping so packet drop rate can be determined.
 
 
-## Currency
-Currently currency is the number of outstanding bytes sent.
-Once a receiver flags they have received the data, those currency bytes are replenished.
+## Credit
+Currently credit is the number of outstanding bytes sent.
+Once a receiver flags they have received the data, those credit bytes are replenished.
 
 Note that for unreliable sending the receiver flags the latest message offset
 received.
@@ -105,7 +105,7 @@ If sender's messages are getting lost then replenishment also suffers and
 the sending suffers.
 This can be great for congestion control.
 This can be terrible for performance of the application.
-To help recover currency, the implementation should resend a notification
+To help recover credit, the implementation should resend a notification
 that a message was sent every RTT.
 The receiver, once getting the notification that a message was sent should
 send that the message was received, even if it was not.
@@ -113,7 +113,7 @@ This works because we are doing unreliable send anyways.
 
 Receivers may choose to delay flagging some messages as received.
 However, this delay should be short, less than half of the senders RTT.
-If receivers cannot handle the data the currency should be renegotiated.
+If receivers cannot handle the data the credit should be renegotiated.
 When renegotiating, all streams are frozen.
 If the backpressure is temporary or local to a stream,
 then flagging backpressure on the individual stream is appropriate.
@@ -222,7 +222,7 @@ Full reset is very similar to closing and re-opening the stream.
 * Malicious connections are terminated with reject.
 * Malicious messages are dropped.
 * Failed decryption indicates malicious intent.
-* Currency is used to track the max number of outstanding packets for which need reliable sending.
+* Credit is used to track the max number of outstanding packets for which need reliable sending.
 * Streams are created on the fly. The cost of streams is incurred on tear-down.
 * Re-typing a stream is an error and is considered malicious.
 * Streams are unidirectional; client and server maintain separately indexed streams.
@@ -262,8 +262,8 @@ Prefixed to every transmission.
 | Octets | Field |
 |:------ |:----- |
 | 1 | Control
-| 4 | ID
-| 4 | Sequence
+| 8 | ID
+| V | Sequence
 
 
 ### Stream
@@ -353,7 +353,7 @@ SECURITY: The signature of the CHALLENGE segment MUST be done for public servers
 | 8 | Timestamp
 | 24 | Nonce client (Zeroes if unencrypted)
 | 32 | Public key client (Zeroes if unencrypted)
-| 4 | Sender Max Currency
+| 4 | Sender Max Credit
 | 4 | Sender Max Streams
 | 4 | Sender Max Message Size
 | 4 | Sender Max Messages
@@ -577,8 +577,8 @@ TODO shouldn't this be a top level packet??
 | Octets | Field |
 |:------ |:----- |
 | 1 | Stream Control
-| 2 | Max Currency
-| 2 | Currency Rate
+| 2 | Max Credit
+| 2 | Credit Rate
 | 2 | Max Streams
 | 4 | Max Message
 
@@ -588,8 +588,8 @@ TODO shouldn't this be a top level packet??
 | Octets | Field |
 |:------ |:----- |
 | 1 | Stream Control
-| 2 | Max Currency
-| 2 | Currency Rate
+| 2 | Max Credit
+| 2 | Credit Rate
 | 2 | Max Streams
 | 4 | Max Message
 

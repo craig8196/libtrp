@@ -36,7 +36,9 @@ extern "C" {
 
 enum _trip_control
 {
+    _TRIP_CONTROL_DATA,
     _TRIP_CONTROL_OPEN,
+    _TRIP_CONTROL_PING,
     _TRIP_CONTROL_MAX,
 };
 

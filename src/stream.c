@@ -232,7 +232,7 @@ trips_send(trip_stream_t *_s, size_t len, const unsigned char *buf)
             break;
         }
 
-        if (!buf || !len || len > INT_MAX || len > s->connection->max_message_size)
+        if (!buf || !len || len > INT_MAX || len > s->connection->peer.lim.message_size)
         {
             code = EINVAL;
             break;

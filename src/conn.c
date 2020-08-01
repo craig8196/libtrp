@@ -27,16 +27,22 @@
 #include "libtrp.h"
 #include "libtrp_memory.h"
 
-#include "trip.h"
 #include "conn.h"
-#include "stream.h"
+#include "crypto.h"
 #include "message.h"
+#include "pack.h"
+#include "protocol.h"
+#include "stream.h"
+#include "time.h"
+#include "trip.h"
+#include "util.h"
 
 #include <errno.h>
 #include <stdarg.h>
 #include <string.h>
-#include <sys/epoll.h>
 
+
+/* CONNECTION PRIVATE */
 
 void
 _tripc_close_stream(_trip_connection_t *c, _trip_stream_t *s)
@@ -48,7 +54,7 @@ _tripc_close_stream(_trip_connection_t *c, _trip_stream_t *s)
 int
 _tripc_message_zone(_trip_connection_t *c)
 {
-    return c->zone;
+    return c->msg.zone;
 }
 
 void
@@ -64,10 +70,10 @@ _tripc_update_zones(_trip_connection_t *c)
 uint32_t
 _tripc_next_message_id(_trip_connection_t *c)
 {
-    uint32_t id = c->nextmsgid;
-    ++c->nextmsgid;
+    uint32_t id = c->msg.nextmsgid;
+    ++c->msg.nextmsgid;
 
-    if (c->nextmsgid > c->router->max_message_id)
+    if (c->msg.nextmsgid > c->router->max_message_id)
     {
         _tripc_update_zones(c);
     }
@@ -75,8 +81,204 @@ _tripc_next_message_id(_trip_connection_t *c)
     return id;
 }
 
+void
+_tripc_mk_keys(_trip_connection_t *c)
+{
+    int error = 0;
+
+    do
+    {
+        if (!c->encrypted)
+        {
+            break;
+        }
+
+        if (!c->self.pk)
+        {
+            c->self.pk = tripm_alloc(TRIP_KEY_PUB);
+        }
+
+        if (!c->self.sk)
+        {
+            c->self.sk = tripm_alloc(TRIP_KEY_SEC);
+        }
+
+        if (!c->self.pk || !c->self.sk)
+        {
+            error = ENOMEM;
+            break;
+        }
+
+        trip_kp(c->self.pk, c->self.sk);
+    } while (false);
+
+    if (error)
+    {
+        c->self.pk = tripm_cfree(c->self.pk);
+        c->self.sk = tripm_cfree(c->self.sk);
+    }
+}
+
+void
+_tripc_generate_ping(_trip_connection_t *c)
+{
+    if (!c->ping.nonce)
+    {
+        c->ping.nonce = tripm_alloc(_TRIP_NONCE);
+    }
+
+    _trip_nonce_init(c->ping.nonce);
+    c->ping.timestamp = triptime_now();
+}
+
+void
+_tripc_set_timeout(_trip_connection_t *c, int ms)
+{
+    // TODO
+    c = c;
+    ms = ms;
+}
+
+void
+_tripc_set_send(_trip_connection_t *c)
+{
+    if (!c->insend)
+    {
+        _trip_qconnection(c->router, c);
+        c->insend = true;
+    }
+}
+
+uint64_t
+_tripc_seq(_trip_connection_t *c)
+{
+    return c->self.sequence;
+}
+
+size_t
+_tripc_send_data(_trip_connection_t *c, size_t blen, void *buf)
+{
+    // TODO
+    c = c;
+    blen = blen;
+    buf = buf;
+    return NPOS;
+}
+
+size_t
+_tripc_send_open(_trip_connection_t *c, size_t blen, void *buf)
+{
+    return trip_pack(blen, buf, "sCQWHboQQnkIIIIOS",
+        (uint8_t)_TRIP_CONTROL_OPEN,
+        (uint64_t)0,
+        _tripc_seq(c),
+
+        (uint16_t)TRIP_VERSION_MAJOR,
+        (size_t)0,
+        (void *)NULL,
+
+        c->self.id,
+        c->self.nonce,
+        c->self.pk,
+        (uint32_t)128000,
+        (uint32_t)8,
+        (uint32_t)65536,
+        (uint32_t)128,
+        c->peer.openpk,
+        c->peer.sig
+        );
+}
+
+size_t
+_tripc_send_chal(_trip_connection_t *c, size_t blen, void *buf)
+{
+    return trip_pack(blen, buf, "sCQWHbeQQnkIIIIES",
+        (uint8_t)_TRIP_CONTROL_OPEN,
+        c->peer.id,
+        _tripc_seq(c),
+
+        c->self.id,
+        c->self.nonce,
+        c->self.pk,
+        (uint32_t)128000,
+        (uint32_t)8,
+        (uint32_t)65536,
+        (uint32_t)128,
+        c->peer.pk,
+        c->self.sig
+        );
+}
+
+size_t
+_tripc_send_ping(_trip_connection_t *c, size_t blen, void *buf)
+{
+    return trip_pack(blen, buf, "CQWenQIIIE",
+        (uint8_t)_TRIP_CONTROL_PING,
+        c->peer.id,
+        _tripc_seq(c),
+
+        c->ping.nonce,
+        c->ping.timestamp,
+        c->self.stat.rtt,
+        c->self.stat.sent,
+        c->self.stat.recv,
+        c->peer.pk
+        );
+}
+
 int
-_tripc_read(_trip_connection_t *c, size_t len, void *buf)
+_tripc_parse_open(_trip_connection_t *c, size_t len, const unsigned char *buf)
+{
+    int length = trip_unpack((int)len, buf, "sCQWHboQQnkIIIIOS",
+        (uint8_t)_TRIP_CONTROL_OPEN,
+        (uint64_t)0,
+        _tripc_seq(c),
+
+        (uint16_t)TRIP_VERSION_MAJOR,
+        (size_t)0,
+        (void *)NULL,
+
+        c->self.id,
+        c->self.nonce,
+        c->self.pk,
+        (uint32_t)128000,
+        (uint32_t)8,
+        (uint32_t)65536,
+        (uint32_t)128,
+        c->peer.openpk,
+        c->peer.sig
+        );
+    if (length < 0)
+    {
+        return EINVAL;
+    }
+
+    return 0;
+}
+
+int
+_tripc_parse_chal(_trip_connection_t *c)
+{
+    c = c;
+    return EINVAL;
+}
+
+int
+_tripc_parse_data(_trip_connection_t *c)
+{
+    c = c;
+    return EINVAL;
+}
+
+int
+_tripc_parse_ping(_trip_connection_t *c)
+{
+    c = c;
+    return EINVAL;
+}
+
+int
+_tripc_read(_trip_connection_t *c, unsigned char control, size_t len, const unsigned char *buf)
 {
     len = len; buf = buf;
     switch (c->state)
@@ -89,14 +291,55 @@ _tripc_read(_trip_connection_t *c, size_t len, void *buf)
             break;
         case _TRIPC_STATE_OPEN:
             {
+                if(_tripc_parse_chal(c))
+                {
+                    return EINVAL;
+                }
             }
             break;
         case _TRIPC_STATE_CHAL:
             {
+                if (_TRIP_CONTROL_DATA == control)
+                {
+                    if (_tripc_parse_data(c))
+                    {
+                        return EINVAL;
+                    }
+
+                    _tripc_set_state(c, _TRIPC_STATE_READY);
+                }
+                else if (_TRIP_CONTROL_OPEN == control)
+                {
+                    if (_tripc_parse_open(c, len, buf))
+                    {
+                        return EINVAL;
+                    }
+
+                    // TODO friend didn't receive chal set send state
+                    // TODO send chal packet in send function
+                    _tripc_set_send(c);
+                }
+                else if (_TRIP_CONTROL_PING == control)
+                {
+                    if (_tripc_parse_ping(c))
+                    {
+                        return EINVAL;
+                    }
+
+                    _tripc_set_state(c, _TRIPC_STATE_READY);
+                }
+                else
+                {
+                    return EINVAL;
+                }
             }
             break;
         case _TRIPC_STATE_PING:
             {
+                if (_tripc_parse_ping(c))
+                {
+                    return EINVAL;
+                }
             }
             break;
         case _TRIPC_STATE_READY:
@@ -132,34 +375,50 @@ _tripc_timeout(_trip_connection_t *c)
     {
         case _TRIPC_STATE_START:
             {
+                _tripc_set_timeout(c, 30000); // TODO 2x expected ping
+                _tripc_set_send(c);
             }
             break;
         case _TRIPC_STATE_OPEN:
             {
+                _tripc_set_timeout(c, 30000); // TODO 2x expected ping
+                _tripc_set_send(c);
             }
             break;
         case _TRIPC_STATE_CHAL:
             {
+                _tripc_set_timeout(c, 30000); // TODO 2x expected ping
+                _tripc_set_send(c);
             }
             break;
         case _TRIPC_STATE_PING:
             {
+                _tripc_set_timeout(c, 30000); // TODO 2x expected ping
+                _tripc_set_send(c);
             }
             break;
         case _TRIPC_STATE_READY:
             {
+                _tripc_set_timeout(c, 30000); // TODO 2x expected ping
+                _tripc_set_send(c);
             }
             break;
         case _TRIPC_STATE_READY_PING:
             {
+                _tripc_set_timeout(c, 30000); // TODO 2x expected ping
+                _tripc_set_send(c);
             }
             break;
         case _TRIPC_STATE_END:
             {
+                _tripc_set_timeout(c, 30000); // TODO 2x expected ping
+                _tripc_set_send(c);
             }
             break;
         case _TRIPC_STATE_ERROR:
             {
+                _tripc_set_timeout(c, 30000); // TODO 2x expected ping
+                _tripc_set_send(c);
             }
             break;
         default:
@@ -172,42 +431,50 @@ _tripc_timeout(_trip_connection_t *c)
     return c->error;
 }
 
-int
+size_t
 _tripc_send(_trip_connection_t *c, size_t len, void *buf)
 {
-    len = len; buf = buf;
     switch (c->state)
     {
         case _TRIPC_STATE_START:
             {
+                return NPOS;
             }
             break;
         case _TRIPC_STATE_OPEN:
             {
+                return _tripc_send_open(c, len, buf);
             }
             break;
         case _TRIPC_STATE_CHAL:
             {
+                return _tripc_send_chal(c, len, buf);
             }
             break;
         case _TRIPC_STATE_PING:
             {
+                // TODO only if we had a timeout do we send ping
+                return _tripc_send_ping(c, len, buf);
             }
             break;
         case _TRIPC_STATE_READY:
             {
+                return _tripc_send_data(c, len, buf);
             }
             break;
         case _TRIPC_STATE_READY_PING:
             {
+                // TODO is this a vestigial state?
             }
             break;
         case _TRIPC_STATE_END:
             {
+                return NPOS;
             }
             break;
         case _TRIPC_STATE_ERROR:
             {
+                return NPOS;
             }
             break;
         default:
@@ -250,7 +517,7 @@ _tripc_destroy(_trip_connection_t *c)
 int
 _tripc_check_open_seq(_trip_connection_t *c, uint32_t seq)
 {
-    if (seq < c->seqfloor)
+    if (seq < c->peer.seqfloor)
     {
         return EINVAL;
     }
@@ -274,24 +541,12 @@ _tripc_check_open_seq(_trip_connection_t *c, uint32_t seq)
 void
 _tripc_flag_open_seq(_trip_connection_t *c, uint32_t seq)
 {
-    uint32_t offset = seq - c->seqfloor;
-    if (offset > c->window)
+    uint32_t offset = seq - c->peer.seqfloor;
+    if (offset > c->peer.window)
     {
-        c->seqfloor += offset - c->window;
+        c->peer.seqfloor += offset - c->peer.window;
     }
 }
-
-int
-_tripc_seg(_trip_connection_t *c, unsigned char control, int len, const unsigned char *buf)
-{
-    c = c;
-    control = control;
-    len = len;
-    buf = buf;
-    return -1;
-}
-
-/* CONNECTION INTERNAL */
 
 /**
  * @brief Change states and do proper create/destroy when entering/leaving.
@@ -306,12 +561,24 @@ _tripc_set_state(_trip_connection_t *c, enum _tripc_state state)
             /* Do nothing */
             break;
         case _TRIPC_STATE_OPEN:
+            {
+                _tripc_set_timeout(c, -1);
+            }
             break;
         case _TRIPC_STATE_CHAL:
+            {
+                _tripc_set_timeout(c, -1);
+            }
             break;
         case _TRIPC_STATE_PING:
+            {
+                _tripc_set_timeout(c, -1);
+            }
             break;
         case _TRIPC_STATE_READY:
+            {
+                // TODO is there cleanup here?
+            }
             break;
         case _TRIPC_STATE_READY_PING:
             break;
@@ -320,6 +587,10 @@ _tripc_set_state(_trip_connection_t *c, enum _tripc_state state)
         case _TRIPC_STATE_END:
             break;
         case _TRIPC_STATE_ERROR:
+            {
+                /* Don't allow to leave ERROR state. */
+                state = _TRIPC_STATE_ERROR;
+            }
             break;
         default:
             break;
@@ -332,20 +603,46 @@ _tripc_set_state(_trip_connection_t *c, enum _tripc_state state)
             /* Do nothing, shouldn't get here. */
             break;
         case _TRIPC_STATE_OPEN:
+            {
+                _tripc_mk_keys(c);
+                _tripc_set_timeout(c, 1000);// TODO
+                _tripc_set_send(c);
+            }
             break;
         case _TRIPC_STATE_CHAL:
+            {
+                _tripc_mk_keys(c);
+                _tripc_set_timeout(c, 1000);// TODO
+            }
             break;
         case _TRIPC_STATE_PING:
+            {
+                _tripc_generate_ping(c);
+                _tripc_set_send(c);
+                _tripc_set_timeout(c, 1000);//TODO
+            }
             break;
         case _TRIPC_STATE_READY:
+            {
+                _tripc_set_timeout(c, 30000); // TODO 2x expected ping
+            }
             break;
         case _TRIPC_STATE_READY_PING:
+            {
+                // TODO is this state needed?
+            }
             break;
         case _TRIPC_STATE_CLOSE:
+            {
+            }
             break;
         case _TRIPC_STATE_END:
+            {
+            }
             break;
         case _TRIPC_STATE_ERROR:
+            /* Do nothing, cleanup should be done. */
+            // TODO is this where we should notify the user?
             break;
         default:
             break;
@@ -360,15 +657,15 @@ _tripc_set_state(_trip_connection_t *c, enum _tripc_state state)
 void
 _tripc_send_add(_trip_connection_t *c, _trip_msg_t *m)
 {
-    if (c->sendend[m->priority])
+    if (c->msg.sendend[m->priority])
     {
-        c->sendend[m->priority]->next = m;
-        c->sendend[m->priority] = m;
+        c->msg.sendend[m->priority]->next = m;
+        c->msg.sendend[m->priority] = m;
     }
     else
     {
-        c->sendbeg[m->priority] = m;
-        c->sendend[m->priority] = m;
+        c->msg.sendbeg[m->priority] = m;
+        c->msg.sendend[m->priority] = m;
     }
 
     m->next = NULL;
@@ -381,20 +678,20 @@ _tripc_send_add(_trip_connection_t *c, _trip_msg_t *m)
 _trip_msg_t *
 _tripc_send_pick(_trip_connection_t *c)
 {
-    c->sendwhich = (c->sendwhich + 1) & c->sendmask;
+    c->msg.sendwhich = (c->msg.sendwhich + 1) & c->msg.sendmask;
 
-    int which = c->sendwhich ? _TRIP_MESSAGE_PRIORITY : _TRIP_MESSAGE_WHENEVER;
+    int which = c->msg.sendwhich ? _TRIP_MESSAGE_PRIORITY : _TRIP_MESSAGE_WHENEVER;
 
-    if (c->sendbeg[which])
+    if (c->msg.sendbeg[which])
     {
-        return c->sendbeg[which];
+        return c->msg.sendbeg[which];
     }
     else
     {
         which = 0x01 & (which + 1);
-        if (c->sendbeg[which])
+        if (c->msg.sendbeg[which])
         {
-            return c->sendbeg[which];
+            return c->msg.sendbeg[which];
         }
         else
         {
@@ -410,16 +707,16 @@ _tripc_send_pick(_trip_connection_t *c)
 void
 _tripc_send_clear(_trip_connection_t *c, _trip_msg_t *m)
 {
-    if (m == c->sendbeg[m->priority])
+    if (m == c->msg.sendbeg[m->priority])
     {
-        if (c->sendbeg[m->priority] == c->sendend[m->priority])
+        if (c->msg.sendbeg[m->priority] == c->msg.sendend[m->priority])
         {
-            c->sendbeg[m->priority] = NULL;
-            c->sendend[m->priority] = NULL;
+            c->msg.sendbeg[m->priority] = NULL;
+            c->msg.sendend[m->priority] = NULL;
         }
         else
         {
-            c->sendbeg[m->priority] = m->next;
+            c->msg.sendbeg[m->priority] = m->next;
         }
 
         m->next = NULL;
@@ -446,6 +743,7 @@ _tripc_start(_trip_connection_t *c)
     enum _tripc_state state = _TRIPC_STATE_OPEN;
     if (c->incoming)
     {
+        // TODO hmmm, shouldn't be calling start to get to challenge state...
         state = _TRIPC_STATE_CHAL;
     }
 
