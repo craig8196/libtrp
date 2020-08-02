@@ -45,6 +45,13 @@
 /* CONNECTION PRIVATE */
 
 void
+_tripc_set_error(_trip_connection_t *c, int err)
+{
+    // TODO
+    c = c; err = err;
+}
+
+void
 _tripc_close_stream(_trip_connection_t *c, _trip_stream_t *s)
 {
     c = c; // TODO

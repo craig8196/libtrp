@@ -31,9 +31,15 @@ extern "C" {
 #endif
 
 
+#include <stdint.h>
 
-    // TODO anything needed here?
 
+#define _TRIP_MAX_EVENTS (16)
+typedef struct _trip_poll_s
+{
+    int efd;
+    uint64_t deadline;
+} _trip_poll_t;
 
 
 #ifdef __cplusplus

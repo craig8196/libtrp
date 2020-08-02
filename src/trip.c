@@ -62,14 +62,18 @@ _trip_qconnection(_trip_router_t *r, _trip_connection_t *c)
 void
 _trip_set_error(_trip_router_t *r, int eval, const char *msg)
 {
-    size_t mlen = strlen(msg ? msg : "");
-    r->error = eval;
-    _trip_set_state(r, _TRIPR_STATE_ERROR);
-    r->errmsg = tripm_alloc(mlen + 1);
-    if (r->errmsg)
+    /* Prevent multiple calls. */
+    if (_TRIPR_STATE_ERROR != r->state)
     {
-        memcpy(r->errmsg, msg, mlen);
-        r->errmsg[mlen] = 0;
+        size_t mlen = strlen(msg ? msg : "");
+        r->error = eval;
+        r->errmsg = tripm_alloc(mlen + 1);
+        if (r->errmsg)
+        {
+            memcpy(r->errmsg, msg, mlen);
+            r->errmsg[mlen] = 0;
+        }
+        _trip_set_state(r, _TRIPR_STATE_ERROR);
     }
 }
 
@@ -94,6 +98,14 @@ _trip_timeout(_trip_router_t *r, int ms, bool forstate)
             }
         }
     }
+}
+
+void
+trip_timeout(trip_router_t *_r, int ms)
+{
+    trip_torouter(r, _r);
+
+    _trip_timeout(r, ms, false);
 }
 
 void
@@ -343,7 +355,7 @@ _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
             // TODO b += mac_bytes... ?
         }
 
-        if (_tripc_seg(c, prefix.control, blen, b))
+        if (_tripc_read(c, prefix.control, blen, b))
         {
             /* Flag the sequence now that validation has taken place. */
             _tripc_flag_open_seq(c, prefix.seq);
@@ -374,6 +386,9 @@ _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
     }
 }
 
+/**
+ * @warn This should be the last function called to prevent side-effects.
+ */
 void
 _trip_set_state(_trip_router_t *r, enum _tripr_state state)
 {
@@ -436,6 +451,7 @@ _trip_set_state(_trip_router_t *r, enum _tripr_state state)
             {
                 r->statedeadline = triptime_deadline(r->timeout_bind);
                 _trip_timeout(r, r->timeout_bind, true);
+                r->packet->bind(r->packet);
             }
             break;
         case _TRIPR_STATE_LISTEN:
@@ -473,7 +489,10 @@ _trip_set_state(_trip_router_t *r, enum _tripr_state state)
                  * cleaned up by this point.
                  * The exception being unbinding.
                  */
-                r->packet->unbind(r->packet);
+                if (NULL != r->packet->router)
+                {
+                    r->packet->unbind(r->packet);
+                }
             }
             break;
         default:
@@ -803,7 +822,6 @@ trip_action(trip_router_t *_r, trip_socket_t fd, int events)
 
                 r->packet->router = _r;
                 _trip_set_state(r, _TRIPR_STATE_BIND);
-                r->packet->bind(r->packet);
             }
             break;
         case _TRIPR_STATE_BIND:

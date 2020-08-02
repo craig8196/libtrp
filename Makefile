@@ -92,9 +92,9 @@ check:
 
 .PHONY: test
 test: all
-	$(CC) $(CFLAGS) $(IFLAGS) $(DEFINES) -o $(TDIR)/$(TESTFILE).o $(TDIR)/$(TESTFILE).c $(DYNAMIC) $(LIBS) $(TLIBS)
+	$(CC) $(CFLAGS) $(IFLAGS) $(DEFINES) -o $(TDIR)/$(TESTFILE).o $(TDIR)/$(TESTFILE).c $(TDIR)/reliable_packet.c $(DYNAMIC) $(LIBS) $(TLIBS)
 	@echo "START TEST: $(TESTFILE)"
-	@$(TDIR)/$(TESTFILE).o && echo "PASSED" || echo "FAILED"
+	valgrind --leak-check=full ./$(TDIR)/$(TESTFILE).o && echo "PASSED" || echo "FAILED"
 ifdef prof
 ifeq ($(prof), coverage)
 	@gcov -m $(SRC)

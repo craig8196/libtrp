@@ -35,13 +35,14 @@ extern "C" {
 #include "connmap.h"
 #include "sendq.h"
 #include "sockmap.h"
+#include "trip_poll.h"
+
 
 
 typedef struct _trip_router_s _trip_router_t;
 typedef struct _trip_connection_s _trip_connection_t;
 typedef struct _trip_stream_s _trip_stream_t;
 typedef struct _trip_msg_s _trip_msg_t;
-typedef struct _trip_poll_s _trip_poll_t;
 typedef struct _trip_prefix_s _trip_prefix_t;
 typedef struct _trip_route_s _trip_route_t;
 typedef struct _trip_open_s _trip_open_t;
@@ -67,13 +68,6 @@ enum _tripr_state
 
 #define _TRIPR_DEFAULT_MAX_CONN (1 << 19)
 #define _TRIPR_DEFAULT_MAX_STREAM (8)
-
-#define _TRIP_MAX_EVENTS (16)
-struct _trip_poll_s
-{
-    int efd;
-    int timeout;
-};
 
 struct _trip_router_s
 {

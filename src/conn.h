@@ -147,7 +147,7 @@ _tripc_flag_open_seq(_trip_connection_t *c, uint32_t seq);
 int
 _tripc_check_open_seq(_trip_connection_t *c, uint32_t seq);
 int
-_tripc_seg(_trip_connection_t *c, unsigned char control, int len, const unsigned char *buf);
+_tripc_read(_trip_connection_t *c, unsigned char control, size_t len, const unsigned char *buf);
 size_t
 _tripc_send(_trip_connection_t *c, size_t len, void *buf);
 void

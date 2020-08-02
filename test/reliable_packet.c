@@ -96,12 +96,12 @@ reliable_new(void)
     rel->buf = malloc(rel->alen);
 
     p->data = rel;
-    p->bind = reliable_bind;
-    p->resolve = reliable_resolve;
-    p->send = reliable_send;
-    p->read = reliable_read;
-    p->unbind = reliable_unbind;
-    p->wait = reliable_wait;
+    p->bind = &reliable_bind;
+    p->resolve = &reliable_resolve;
+    p->send = &reliable_send;
+    p->read = &reliable_read;
+    p->unbind = &reliable_unbind;
+    p->wait = &reliable_wait;
 
     return p;
 }

@@ -9,6 +9,7 @@
 #include "time.h"
 #include "trip.h"
 #include "libtrp_memory.h"
+#include "util.h"
 
 
 _trip_poll_t *
@@ -16,22 +17,22 @@ _trip_poll_new()
 {
     _trip_poll_t *w = tripm_alloc(sizeof(_trip_poll_t));
 
-    w->efd = epoll_create1(0);
 
     int c = 0;
 
-    do
+    w->efd = epoll_create1(0);
+    w->deadline = triptime_now();
+    if (-1 == w->efd)
     {
-        if (-1 == w->efd)
-        {
-            c = EINVAL;
-            break;
-        }
-    } while (false);
+        c = EINVAL;
+    }
 
     if (c)
     {
-        tripm_free(w);
+        if (w)
+        {
+            tripm_free(w);
+        }
         w = NULL;
     }
 
@@ -67,13 +68,10 @@ _trip_fd_events_to_epoll(int events)
 }
 
 void
-_trip_watch_cb(trip_router_t *_r, int fd, int events, void *data)
+_trip_watch_cb(trip_router_t *_r, int fd, int events, void * UNUSED(data))
 {
     trip_torouter(r, _r);
     _trip_poll_t *w = r->poll;
-
-    // TODO
-    data = data;
 
     int c;
     struct epoll_event ev = { 0 };
@@ -83,17 +81,11 @@ _trip_watch_cb(trip_router_t *_r, int fd, int events, void *data)
 
     if (TRIP_REMOVE != events)
     {
-        // TODO
-        /*
-        if (TRIP_ADD & events)
-        {
-            c = epoll_ctl(w->efd, EPOLL_CTL_ADD, fd, &ev);
-        }
-        else
+        c = epoll_ctl(w->efd, EPOLL_CTL_ADD, fd, &ev);
+        if (EEXIST == c)
         {
             c = epoll_ctl(w->efd, EPOLL_CTL_MOD, fd, &ev);
         }
-        */
     }
     else
     {
@@ -111,7 +103,30 @@ _trip_timeout_cb(trip_router_t *_r, long timeout)
 {
     trip_torouter(r, _r);
     _trip_poll_t *w = r->poll;
-    w->timeout = timeout;
+    w->deadline = triptime_deadline(timeout);
+}
+
+int
+trip_run_init(trip_router_t *_r)
+{
+    trip_torouter(r, _r);
+
+    int c = 0;
+
+    if (!r->poll)
+    {
+        r->watch = _trip_watch_cb;
+        r->timeout = _trip_timeout_cb;
+        r->poll = _trip_poll_new();
+        if (!r->poll)
+        {
+            r->watch = NULL;
+            r->timeout = NULL;
+            c = ENOMEM;
+        }
+    }
+
+    return c;
 }
 
 int
@@ -125,23 +140,22 @@ trip_run(trip_router_t *_r, int maxtimeout)
     {
         if (!r->poll)
         {
-            r->watch = _trip_watch_cb;
-            r->timeout = _trip_timeout_cb;
-            r->poll = _trip_poll_new();
-            if (!r->poll)
-            {
-                r->watch = NULL;
-                r->timeout = NULL;
-                c = ENOMEM;
-                break;
-            }
+            c = EINVAL;
+            break;
         }
 
         _trip_poll_t *w = r->poll;
 
-        uint64_t now = 0;
-        uint64_t deadline = triptime_deadline(maxtimeout);
+        uint64_t now = triptime_now();
         int timeout = maxtimeout;
+        {
+            int tmp = triptime_timeout(w->deadline, now);
+            if (tmp < timeout)
+            {
+                timeout = tmp;
+            }
+        }
+        uint64_t deadline = triptime_deadline(timeout);
         
         for (;;)
         {
@@ -153,29 +167,35 @@ trip_run(trip_router_t *_r, int maxtimeout)
                 c = errno;
                 break;
             }
-
-            int n;
-            for (n = 0; n < nfds; ++n)
+            else if (0 == nfds)
             {
-                int events = 0;
-                int evs = eventlist[n].events;
-                int fd = eventlist[n].data.fd;
-
-                if (evs & EPOLLIN)
+                c = trip_action(_r, TRIP_SOCKET_TIMEOUT, 0);
+            }
+            else
+            {
+                int n;
+                for (n = 0; n < nfds; ++n)
                 {
-                    events |= TRIP_IN;
-                }
+                    int events = 0;
+                    int evs = eventlist[n].events;
+                    int fd = eventlist[n].data.fd;
 
-                if (evs & EPOLLOUT)
-                {
-                    events |= TRIP_OUT;
-                }
+                    if (evs & EPOLLIN)
+                    {
+                        events |= TRIP_IN;
+                    }
 
-                c = trip_action(_r, fd, events);
-                
-                if (c)
-                {
-                    break;
+                    if (evs & EPOLLOUT)
+                    {
+                        events |= TRIP_OUT;
+                    }
+
+                    c = trip_action(_r, fd, events);
+                    
+                    if (c)
+                    {
+                        break;
+                    }
                 }
             }
 
@@ -194,7 +214,6 @@ trip_run(trip_router_t *_r, int maxtimeout)
             timeout = (int)(deadline - now);
         }
     } while (false);
-
 
     return c;
 }

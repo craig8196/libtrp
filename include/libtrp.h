@@ -81,7 +81,7 @@ typedef struct trip_screen_s
 
 typedef void trip_handle_screen_t(trip_screen_t *);
 typedef void trip_handle_connection_t(trip_connection_t *);
-typedef void trip_handle_stream_t(trip_stream_t *, bool open);
+typedef void trip_handle_stream_t(trip_stream_t *);
 enum trip_message_status
 {
     /* Receiving message. */
@@ -132,6 +132,8 @@ trip_action(trip_router_t *, trip_socket_t, int);
 void
 trip_assign(trip_router_t *, trip_socket_t, void *);
 
+int
+trip_run_init(trip_router_t *_r);
 int
 trip_start(trip_router_t *r);
 int
