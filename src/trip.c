@@ -35,6 +35,7 @@
 #include "protocol.h"
 #include "pack.h"
 #include "sendq.h"
+#include "util.h"
 
 #include <errno.h>
 #include <stdarg.h>
@@ -78,34 +79,51 @@ _trip_set_error(_trip_router_t *r, int eval, const char *msg)
 }
 
 void
-_trip_timeout(_trip_router_t *r, int ms, bool forstate)
-{
-    if (forstate)
-    {
-        r->timeout((trip_router_t *)r, (long)ms);
-    }
-    else
-    {
-        if (ms >= 0)
-        {
-            /* Only allow timeouts shorter than the state deadline.
-             * TODO should we save the deadline for non-state deadlines? Tricky.
-             */
-            uint64_t now = triptime_now();
-            if ((now + ms) < r->statedeadline)
-            {
-                r->timeout((trip_router_t *)r, ms);
-            }
-        }
-    }
-}
-
-void
-trip_timeout(trip_router_t *_r, int ms)
+_trip_timeout_router(void *_r)
 {
     trip_torouter(r, _r);
 
-    _trip_timeout(r, ms, false);
+    r = r;
+    // TODO null out timer entry
+    // TODO how did we get here???
+}
+
+timer_entry_t *
+_trip_timeout(_trip_router_t *r, int ms, void *data, timer_cb_t *cb)
+{
+    if (ms >= 0)
+    {
+        return timerwheel_add(&r->wheel, ms, data, cb);
+    }
+    else if (NULL != data)
+    {
+        timerwheel_cancel(data);
+    }
+
+    return NULL;
+}
+
+/**
+ * Create a timeout. Callback is called on timeout.
+ * @warn The timeout handle becomes invalid upon timeout, NULL your reference!
+ * @warn Timeout cancellation method will require NULLing your reference!
+ * @return The timeout handle.
+ */
+triptimer_t *
+trip_timeout(trip_router_t *_r, int ms, void *data, triptimer_cb_t *cb)
+{
+    trip_torouter(r, _r);
+
+    return (triptimer_t *)_trip_timeout(r, ms, data, (timer_cb_t *)cb);
+}
+
+/**
+ * Cancel the timeout. The entry will stay in the clock until timeout.
+ */
+void
+trip_timeout_cancel(triptimer_t *t)
+{
+    timerwheel_cancel((timer_entry_t *)t);
 }
 
 void
@@ -403,7 +421,7 @@ _trip_set_state(_trip_router_t *r, enum _tripr_state state)
         case _TRIPR_STATE_BIND:
             {
                 r->statedeadline = triptime_deadline(0);
-                _trip_timeout(r, -1, true);
+                _trip_timeout(r, -1, r, _trip_timeout_router);
             }
             break;
         case _TRIPR_STATE_LISTEN:
@@ -416,13 +434,13 @@ _trip_set_state(_trip_router_t *r, enum _tripr_state state)
         case _TRIPR_STATE_CLOSE:
             {
                 r->statedeadline = triptime_deadline(0);
-                _trip_timeout(r, -1, true);
+                _trip_timeout(r, -1, r, _trip_timeout_router);
             }
             break;
         case _TRIPR_STATE_UNBIND:
             {
                 r->statedeadline = triptime_deadline(0);
-                _trip_timeout(r, -1, true);
+                _trip_timeout(r, -1, r, _trip_timeout_router);
             }
             break;
         case _TRIPR_STATE_END:
@@ -450,7 +468,7 @@ _trip_set_state(_trip_router_t *r, enum _tripr_state state)
         case _TRIPR_STATE_BIND:
             {
                 r->statedeadline = triptime_deadline(r->timeout_bind);
-                _trip_timeout(r, r->timeout_bind, true);
+                _trip_timeout(r, r->timeout_bind, r, _trip_timeout_router);
                 r->packet->bind(r->packet);
             }
             break;
@@ -467,7 +485,7 @@ _trip_set_state(_trip_router_t *r, enum _tripr_state state)
                  */
                 _trip_close(r, r->timeout_close);
                 r->statedeadline = triptime_deadline(r->timeout_close);
-                _trip_timeout(r, r->timeout_close, true);
+                _trip_timeout(r, r->timeout_close, r, _trip_timeout_router);
             }
             break;
         case _TRIPR_STATE_UNBIND:
@@ -475,7 +493,7 @@ _trip_set_state(_trip_router_t *r, enum _tripr_state state)
                 _trip_close(r, 0);
                 r->packet->unbind(r->packet);
                 r->statedeadline = triptime_deadline(r->timeout_unbind);
-                _trip_timeout(r, r->timeout_unbind, true);
+                _trip_timeout(r, r->timeout_unbind, r, _trip_timeout_router);
             }
             break;
         case _TRIPR_STATE_END:
@@ -695,10 +713,8 @@ trip_free(trip_router_t *_r)
         r->packet = NULL;
     }
 
-    if (r->errmsg)
-    {
-        tripm_free(r->errmsg);
-    }
+    tripm_cfree(r->poll);
+    tripm_cfree(r->errmsg);
 
     connmap_destroy(&r->con);
 
@@ -842,14 +858,14 @@ trip_action(trip_router_t *_r, trip_socket_t fd, int events)
                 }
 
                 uint64_t now = triptime_now();
-                if (now >= r->statedeadline)
+                if (now > r->statedeadline)
                 {
                     _trip_set_error(r, ETIME, "Bind timeout.");
                     break;
                 }
 
                 int timeout = triptime_timeout(r->statedeadline, now);
-                _trip_timeout(r, timeout, true);
+                _trip_timeout(r, timeout, r, _trip_timeout_router);
             }
             break;
         case _TRIPR_STATE_LISTEN:

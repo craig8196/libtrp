@@ -36,6 +36,7 @@ extern "C" {
 #include "sendq.h"
 #include "sockmap.h"
 #include "trip_poll.h"
+#include "timerwheel.h"
 
 
 
@@ -104,6 +105,9 @@ struct _trip_router_s
 
     /* Packet Interface */
     trip_packet_t *packet;
+
+    /* Timer Wheel */
+    timerwheel_t wheel;
 
     /* Encryption */
     unsigned char *openpub;

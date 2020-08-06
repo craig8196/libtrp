@@ -37,6 +37,9 @@ extern "C" {
 
 
 /* TRiP Packet to Router Communication */
+typedef struct triptimer_s { int unused; } triptimer_t;
+typedef void triptimer_cb_t(void *data);
+
 void
 trip_seg(trip_router_t *r, int src, size_t len, void *buf);
 void
@@ -45,8 +48,8 @@ void
 trip_resolve(trip_router_t *r, trip_connection_t *c, int err);
 void
 trip_watch(trip_router_t *r, trip_socket_t fd, int events);
-void
-trip_timeout(trip_router_t *r, int timeoutms);
+triptimer_t *
+trip_timeout(trip_router_t *r, int timeoutms, void *data, triptimer_cb_t *cb);
 void
 trip_unready(trip_router_t *r, int err);
 void
