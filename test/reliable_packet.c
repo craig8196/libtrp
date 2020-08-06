@@ -109,6 +109,8 @@ reliable_new(void)
 void
 reliable_free(trip_packet_t *p)
 {
+    reliable_t *rel = p->data;
+    free(rel->buf);
     free(p->data);
     free(p);
 }
