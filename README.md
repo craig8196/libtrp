@@ -2,11 +2,12 @@
 
 # libtrp
 C implementation of The River Protocol (TRP/TRiP, pronounced "trip").
-Unfortunately, libtrip could get confused with a NodeJs library and a website.
 TRiP is a flexible communications protocol.
+Unfortunately, libtrip could get confused with a NodeJs library and a website.
 
 
 ## WARNINGS
+* STILL BEING DESIGNED!
 * The code is experimental and probably has flaws
 * Currently in pre-release and will not follow semantic versioning
   until release v1.0.0
@@ -16,16 +17,21 @@ TRiP is a flexible communications protocol.
   and have a solution ready (if possible)
 
 
-## Goals
+## Current Goals
 * Easily build custom protocols for niche applications.
-* Security by default, fairly transparent to the user.
-* Persistent, robust, serializable connections.
+* Security by default (user must disable security).
+* Persistent, robust connections.
 * Data flexibility so behavior, and network behavior, fit the problem space.
 * Real-time capabilities (disabled by default for better network performance).
 * Framework verbosity to provide information to applications for better
   performance (e.g. User MTU for guaranteed single packet delivery).
 * Future-proof, a programming interface and protocol that can be used over
   other mediums and a protocol that can scale up or down with the network.
+
+
+## Future Goals
+* Serializable connections for long disconnects.
+* IoT capable through minimal client implementations to minimize build size.
 
 
 ## Why use TRiP?
@@ -59,7 +65,7 @@ TCP suffers from:
 
 UDP suffers from:
 * No security by default
-* Unreliability
+* Unreliable send only
 * Spoofing
 * Difficulty in sending large messages/packets
 * Connectionless
@@ -69,7 +75,7 @@ TRiP suffers from:
   (some extra context switching or system calls)
 * Needs another protocol on top
   (that is also part of the design)
-* Potentially memory hungry?
+* Potentially memory hungry? Will discover and record as needed.
   (struct sizes, tracking, message space pre-allocation)
 
 
@@ -85,11 +91,14 @@ Outline of basic design and expectations.
 
 ### Testing
 The memory and packet interfaces are abstracted to allow for controlled testing.
+Memory interface can be adjusted by overwriting the `libtrp_memory.h` header.
+Packet interface included with code is for use over UDP.
+For testing, a reliable packet interface is used for up to two connections.
 
 
 ### Interface
 The interface must be implemented in a generic way.
-To/from destinations can be specified using UTF8 strings.
+To/from destinations can be specified using UTF8 or binary strings.
 This allows for the interface to remain flexible.
 
 
@@ -106,7 +115,8 @@ makes common structs globally available for handling one connection at a time.
 ### Dependencies
 * libc: Standard/common functions.
 * OS provided UDP socket interface, optional for non-UDP use-cases.
-* libcares: For DNS resolution, optional for direct IP and custom builds.
+* OS provided event watching (epoll for Linux) for `trip_run` implementation.
 * libsodium: For security. Efficient and easy-to-use encryption.
+* libcares (in the future): For DNS resolution, optional for direct IP and custom builds.
 
 
