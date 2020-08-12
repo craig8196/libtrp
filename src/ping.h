@@ -35,6 +35,8 @@ typedef struct ping_s
 {
     unsigned char *nonce;
     uint64_t timestamp;
+    int maxms;
+    int ms;
 } ping_t;
 
 

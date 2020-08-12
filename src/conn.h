@@ -85,6 +85,12 @@ struct _trip_connection_s
     /* State */
     enum _tripc_state state;
     uint64_t statedeadline;
+    void *statetimer;
+    int retry;
+    int maxretry;
+    int maxstatems;
+    int growms;
+    int statems;
 
     /* Error */
     int error;

@@ -42,6 +42,29 @@
 #include <string.h>
 
 
+#define DEBUG_ROUTER (1)
+
+#if DEBUG_ROUTER
+#include <stdio.h>
+#endif
+
+const char *
+_trip_state_str(int s)
+{
+    const char *map[] =
+    {
+        "_TRIPR_STATE_START",
+        "_TRIPR_STATE_STOP",
+        "_TRIPR_STATE_BIND",
+        "_TRIPR_STATE_LISTEN",
+        "_TRIPR_STATE_CLOSE",
+        "_TRIPR_STATE_UNBIND",
+        "_TRIPR_STATE_END",
+        "_TRIPR_STATE_ERROR",
+    };
+    return map[s];
+}
+
 _trip_connection_t *
 _trip_new_connection()
 {
@@ -79,28 +102,28 @@ _trip_set_error(_trip_router_t *r, int eval, const char *msg)
 }
 
 void
-_trip_timeout_router(void *_r)
+_trip_timeout_router_cb(void *_r)
 {
     trip_torouter(r, _r);
 
-    r = r;
-    // TODO null out timer entry
+    r->statetimer = NULL;
     // TODO how did we get here???
 }
 
 timer_entry_t *
 _trip_timeout(_trip_router_t *r, int ms, void *data, timer_cb_t *cb)
 {
-    if (ms >= 0)
-    {
-        return timerwheel_add(&r->wheel, ms, data, cb);
-    }
-    else if (NULL != data)
-    {
-        timerwheel_cancel(data);
-    }
+    return timerwheel_add(&r->wheel, ms, data, cb);
+}
 
-    return NULL;
+void
+_trip_timeout_cancel_state(_trip_router_t *r)
+{
+    if (r->statetimer)
+    {
+        timerwheel_cancel(r->statetimer);
+        r->statetimer = NULL;
+    }
 }
 
 /**
@@ -123,7 +146,10 @@ trip_timeout(trip_router_t *_r, int ms, void *data, triptimer_cb_t *cb)
 void
 trip_timeout_cancel(triptimer_t *t)
 {
-    timerwheel_cancel((timer_entry_t *)t);
+    if (t)
+    {
+        timerwheel_cancel((timer_entry_t *)t);
+    }
 }
 
 void
@@ -295,7 +321,7 @@ _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
         }
 
         /* Unpack version and routing information. */
-        uint16_t version = -1;
+        uint16_t version = 0;
         _trip_route_t route;
         int endroute = trip_unpack(len - end, buf + end, "HVp",
                                &version,
@@ -310,7 +336,7 @@ _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
         }
 
         /* Discard if we don't support the version number. */
-        if (version > 0)
+        if (version != TRIP_VERSION_MAJOR)
         {
             _trip_router_reject(r, src, 5);
             return;
@@ -410,6 +436,9 @@ _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
 void
 _trip_set_state(_trip_router_t *r, enum _tripr_state state)
 {
+#if DEBUG_ROUTER
+    printf("%s: from(%s)->to(%s)\n", __func__, _trip_state_str((int)r->state),_trip_state_str((int)state));
+#endif
     /* When leaving the state, do this. */
     switch (r->state)
     {
@@ -421,7 +450,7 @@ _trip_set_state(_trip_router_t *r, enum _tripr_state state)
         case _TRIPR_STATE_BIND:
             {
                 r->statedeadline = triptime_deadline(0);
-                _trip_timeout(r, -1, r, _trip_timeout_router);
+                _trip_timeout_cancel_state(r);
             }
             break;
         case _TRIPR_STATE_LISTEN:
@@ -434,13 +463,13 @@ _trip_set_state(_trip_router_t *r, enum _tripr_state state)
         case _TRIPR_STATE_CLOSE:
             {
                 r->statedeadline = triptime_deadline(0);
-                _trip_timeout(r, -1, r, _trip_timeout_router);
+                _trip_timeout_cancel_state(r);
             }
             break;
         case _TRIPR_STATE_UNBIND:
             {
                 r->statedeadline = triptime_deadline(0);
-                _trip_timeout(r, -1, r, _trip_timeout_router);
+                _trip_timeout_cancel_state(r);
             }
             break;
         case _TRIPR_STATE_END:
@@ -468,7 +497,7 @@ _trip_set_state(_trip_router_t *r, enum _tripr_state state)
         case _TRIPR_STATE_BIND:
             {
                 r->statedeadline = triptime_deadline(r->timeout_bind);
-                _trip_timeout(r, r->timeout_bind, r, _trip_timeout_router);
+                r->statetimer = _trip_timeout(r, r->timeout_bind, r, _trip_timeout_router_cb);
                 r->packet->bind(r->packet);
             }
             break;
@@ -485,7 +514,7 @@ _trip_set_state(_trip_router_t *r, enum _tripr_state state)
                  */
                 _trip_close(r, r->timeout_close);
                 r->statedeadline = triptime_deadline(r->timeout_close);
-                _trip_timeout(r, r->timeout_close, r, _trip_timeout_router);
+                r->statetimer = _trip_timeout(r, r->timeout_close, r, _trip_timeout_router_cb);
             }
             break;
         case _TRIPR_STATE_UNBIND:
@@ -493,7 +522,7 @@ _trip_set_state(_trip_router_t *r, enum _tripr_state state)
                 _trip_close(r, 0);
                 r->packet->unbind(r->packet);
                 r->statedeadline = triptime_deadline(r->timeout_unbind);
-                _trip_timeout(r, r->timeout_unbind, r, _trip_timeout_router);
+                r->statetimer = _trip_timeout(r, r->timeout_unbind, r, _trip_timeout_router_cb);
             }
             break;
         case _TRIPR_STATE_END:
@@ -695,6 +724,7 @@ trip_new(enum trip_preset preset)
         }
 
         connmap_init(&r->con, r->max_conn);
+        timerwheel_init(&r->wheel);
         // TODO set other settings
     } while (false);
 
@@ -717,6 +747,7 @@ trip_free(trip_router_t *_r)
     tripm_cfree(r->errmsg);
 
     connmap_destroy(&r->con);
+    timerwheel_destroy(&r->wheel);
 
     tripm_free(r);
 }
@@ -865,7 +896,7 @@ trip_action(trip_router_t *_r, trip_socket_t fd, int events)
                 }
 
                 int timeout = triptime_timeout(r->statedeadline, now);
-                _trip_timeout(r, timeout, r, _trip_timeout_router);
+                r->statetimer = _trip_timeout(r, timeout, r, _trip_timeout_router_cb);
             }
             break;
         case _TRIPR_STATE_LISTEN:

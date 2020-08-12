@@ -26,18 +26,39 @@ typedef struct reliable_s
     size_t alen;
     size_t len;
     unsigned char *buf;
+    triptimer_t *timer;
 } reliable_t;
+
+void
+reliable_set_timeout(trip_packet_t *p);
+
+static void
+reliable_timeout(void *_p)
+{
+    trip_packet_t *p = (trip_packet_t *)_p;
+    reliable_set_timeout(p);
+}
+
+void
+reliable_set_timeout(trip_packet_t *p)
+{
+    reliable_t *r = p->data;
+    r->timer = trip_timeout(p->router, 5, (void *)p, reliable_timeout);
+}
 
 static void
 reliable_bind(trip_packet_t *p)
 {
     trip_ready(p->router);
-    trip_timeout(p->router, 1);
+    reliable_set_timeout(p);
 }
 
 static void
 reliable_unbind(trip_packet_t *p)
 {
+    reliable_t *r = p->data;
+    trip_timeout_cancel(r->timer);
+    r->timer = NULL;
     trip_unready(p->router, 0);
 }
 
@@ -94,6 +115,7 @@ reliable_new(void)
     rel->alen = 512;
     rel->len = 0;
     rel->buf = malloc(rel->alen);
+    rel->timer = NULL;
 
     p->data = rel;
     p->bind = &reliable_bind;

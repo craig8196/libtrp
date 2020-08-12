@@ -51,6 +51,8 @@ trip_watch(trip_router_t *r, trip_socket_t fd, int events);
 triptimer_t *
 trip_timeout(trip_router_t *r, int timeoutms, void *data, triptimer_cb_t *cb);
 void
+trip_timeout_cancel(triptimer_t *t);
+void
 trip_unready(trip_router_t *r, int err);
 void
 trip_error(trip_router_t *r, int error, const char *emsg);
@@ -60,6 +62,7 @@ trip_error(trip_router_t *r, int error, const char *emsg);
 typedef struct trip_packet_s trip_packet_t;
 typedef void trip_packet_bind_t(trip_packet_t *);
 typedef void trip_packet_resolve_t(trip_packet_t *, trip_connection_t *);
+typedef void trip_packet_cancel_t(trip_packet_t *, trip_connection_t *);
 typedef int trip_packet_send_t(trip_packet_t *, int src, size_t, void *buf);
 typedef int trip_packet_read_t(trip_packet_t *, trip_socket_t fd, int max);
 typedef void trip_packet_unbind_t(trip_packet_t *);
@@ -70,6 +73,7 @@ struct trip_packet_s
     void *data;
     trip_packet_bind_t *bind;
     trip_packet_resolve_t *resolve;
+    trip_packet_cancel_t *cancel;
     trip_packet_send_t *send;
     trip_packet_read_t *read;
     trip_packet_unbind_t *unbind;

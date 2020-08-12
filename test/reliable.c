@@ -31,6 +31,7 @@
 #include <string.h>
 
 #include "libtrp.h"
+#include "../src/time.h"
 #include "reliable_packet.h"
 
 
@@ -40,6 +41,7 @@ typedef struct
 {
     bool running;
     bool stop;
+    uint64_t stopdeadline;
     trip_router_t *router;
     trip_packet_t *reliable;
 } mydata_t;
@@ -176,6 +178,7 @@ router_init(mydata_t *data)
 {
     data->running = true;
     data->stop = false;
+    data->stopdeadline = triptime_deadline(1000);
 
     trip_router_t *router = data->router = trip_new(TRIP_PRESET_ROUTER);
     trip_packet_t *reliable = reliable_new();
@@ -203,10 +206,18 @@ int main()
 
     router_init(&data);
     printf("Entering run loop...\n");
+    uint64_t now;
     int err;
-    while (!(err = trip_run(data.router, 1000)))
+    while (!(err = trip_run(data.router, 15)))
     {
         printf("Timeout...\n");
+
+        now = triptime_now();
+        if (now >= data.stopdeadline)
+        {
+            data.stop = true;
+        }
+
         if (data.stop)
         {
             trip_stop(data.router);

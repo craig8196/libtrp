@@ -138,12 +138,80 @@ _tripc_generate_ping(_trip_connection_t *c)
     c->ping.timestamp = triptime_now();
 }
 
+int
+_tripc_timeout(_trip_connection_t *c);
+
 void
-_tripc_set_timeout(_trip_connection_t *c, int ms)
+_tripc_timeout_state_resend(void *_c)
 {
-    // TODO
-    c = c;
-    ms = ms;
+    trip_toconn(c, _c);
+
+    if (_tripc_timeout(c))
+    {
+        // TODO report fatal error to user
+    }
+}
+
+void
+_tripc_timeout_state_ready_ping(void *_c)
+{
+    trip_toconn(c, _c);
+
+    if (_tripc_set_state(c, _TRIPC_STATE_PING))
+    {
+        // TODO report fatal error to user
+    }
+}
+
+/**
+ * Set the state deadline using maxstatewait.
+ */
+void
+_tripc_set_deadline(_trip_connection_t *c, int ms)
+{
+    c->statedeadline = triptime_deadline(ms);
+}
+
+void
+_tripc_set_growth(_trip_connection_t *c, int ms)
+{
+    c->growms = ms;
+    c->retry = 0;
+}
+
+int
+_tripc_get_growth(_trip_connection_t *c)
+{
+    int curr = c->growms;
+    c->growms += c->growms / 2;
+    if (c->growms > c->maxstatems)
+    {
+        c->growms = c->maxstatems;
+    }
+    ++c->retry;
+    return curr;
+}
+
+bool
+_tripc_done_retry(_trip_connection_t *c)
+{
+    return c->maxretry > 0 && c->retry > c->maxretry;
+}
+
+void
+_tripc_set_timeout(_trip_connection_t *c, int ms, timer_cb_t *cb)
+{
+    c->statetimer = trip_timeout((trip_router_t *)c->router, ms, c, cb);
+}
+
+void
+_tripc_clear_timeout(_trip_connection_t *c)
+{
+    if (c->statetimer)
+    {
+        trip_timeout_cancel((triptimer_t *)c->statetimer);
+        c->statetimer = NULL;
+    }
 }
 
 void
@@ -165,7 +233,7 @@ _tripc_seq(_trip_connection_t *c)
 size_t
 _tripc_send_data(_trip_connection_t *c, size_t blen, void *buf)
 {
-    // TODO
+    // TODO check the message queue
     c = c;
     blen = blen;
     buf = buf;
@@ -382,49 +450,49 @@ _tripc_timeout(_trip_connection_t *c)
     {
         case _TRIPC_STATE_START:
             {
-                _tripc_set_timeout(c, 30000); // TODO 2x expected ping
-                _tripc_set_send(c);
+                /* Waiting for resolve has timed out. */
+                _tripc_set_error(c, ETIME);
             }
             break;
         case _TRIPC_STATE_OPEN:
             {
-                _tripc_set_timeout(c, 30000); // TODO 2x expected ping
+                _tripc_set_timeout(c, 3000, _tripc_timeout_state_resend); // TODO 2x expected ping
                 _tripc_set_send(c);
             }
             break;
         case _TRIPC_STATE_CHAL:
             {
-                _tripc_set_timeout(c, 30000); // TODO 2x expected ping
+                _tripc_set_timeout(c, 3000, _tripc_timeout_state_resend); // TODO 2x expected ping
                 _tripc_set_send(c);
             }
             break;
         case _TRIPC_STATE_PING:
             {
-                _tripc_set_timeout(c, 30000); // TODO 2x expected ping
+                _tripc_set_timeout(c, 3000, _tripc_timeout_state_resend); // TODO 2x expected ping
                 _tripc_set_send(c);
             }
             break;
         case _TRIPC_STATE_READY:
             {
-                _tripc_set_timeout(c, 30000); // TODO 2x expected ping
+                _tripc_set_timeout(c, 3000, _tripc_timeout_state_resend); // TODO 2x expected ping
                 _tripc_set_send(c);
             }
             break;
         case _TRIPC_STATE_READY_PING:
             {
-                _tripc_set_timeout(c, 30000); // TODO 2x expected ping
+                _tripc_set_timeout(c, 3000, _tripc_timeout_state_resend); // TODO 2x expected ping
                 _tripc_set_send(c);
             }
             break;
         case _TRIPC_STATE_END:
             {
-                _tripc_set_timeout(c, 30000); // TODO 2x expected ping
+                _tripc_set_timeout(c, 3000, _tripc_timeout_state_resend); // TODO 2x expected ping
                 _tripc_set_send(c);
             }
             break;
         case _TRIPC_STATE_ERROR:
             {
-                _tripc_set_timeout(c, 30000); // TODO 2x expected ping
+                _tripc_set_timeout(c, 3000, _tripc_timeout_state_resend); // TODO 2x expected ping
                 _tripc_set_send(c);
             }
             break;
@@ -565,33 +633,40 @@ _tripc_set_state(_trip_connection_t *c, enum _tripc_state state)
     switch(state)
     {
         case _TRIPC_STATE_START:
-            /* Do nothing */
+            {
+                /* May be set to prevent resolve failure. */
+                _tripc_clear_timeout(c);
+            }
             break;
         case _TRIPC_STATE_OPEN:
             {
-                _tripc_set_timeout(c, -1);
+                _tripc_clear_timeout(c);
             }
             break;
         case _TRIPC_STATE_CHAL:
             {
-                _tripc_set_timeout(c, -1);
+                _tripc_clear_timeout(c);
             }
             break;
         case _TRIPC_STATE_PING:
             {
-                _tripc_set_timeout(c, -1);
+                _tripc_clear_timeout(c);
             }
             break;
         case _TRIPC_STATE_READY:
             {
-                // TODO is there cleanup here?
+                _tripc_clear_timeout(c);
             }
             break;
-        case _TRIPC_STATE_READY_PING:
-            break;
         case _TRIPC_STATE_CLOSE:
+            {
+                _tripc_clear_timeout(c);
+            }
             break;
         case _TRIPC_STATE_END:
+            {
+                /* Memory should be free'd shortly after reaching this state. */
+            }
             break;
         case _TRIPC_STATE_ERROR:
             {
@@ -612,35 +687,40 @@ _tripc_set_state(_trip_connection_t *c, enum _tripc_state state)
         case _TRIPC_STATE_OPEN:
             {
                 _tripc_mk_keys(c);
-                _tripc_set_timeout(c, 1000);// TODO
+                _tripc_set_deadline(c, c->maxstatems);
+                _tripc_set_growth(c, c->statems);
+                _tripc_set_timeout(c, _tripc_get_growth(c), _tripc_timeout_state_resend);
                 _tripc_set_send(c);
             }
             break;
         case _TRIPC_STATE_CHAL:
             {
                 _tripc_mk_keys(c);
-                _tripc_set_timeout(c, 1000);// TODO
+                _tripc_set_deadline(c, c->maxstatems);
+                _tripc_set_growth(c, c->statems);
+                _tripc_set_timeout(c, _tripc_get_growth(c), _tripc_timeout_state_resend);
+                _tripc_set_send(c);
             }
             break;
         case _TRIPC_STATE_PING:
             {
                 _tripc_generate_ping(c);
+                _tripc_set_deadline(c, c->ping.maxms);
+                _tripc_set_growth(c, c->ping.ms);
+                _tripc_set_timeout(c, _tripc_get_growth(c), _tripc_timeout_state_resend);
                 _tripc_set_send(c);
-                _tripc_set_timeout(c, 1000);//TODO
             }
             break;
         case _TRIPC_STATE_READY:
             {
-                _tripc_set_timeout(c, 30000); // TODO 2x expected ping
-            }
-            break;
-        case _TRIPC_STATE_READY_PING:
-            {
-                // TODO is this state needed?
+                _tripc_set_deadline(c, c->ping.maxms * 2);
+                _tripc_set_timeout(c, c->ping.maxms + c->ping.maxms/2, _tripc_timeout_state_ready_ping);
             }
             break;
         case _TRIPC_STATE_CLOSE:
             {
+                _tripc_set_deadline(c, c->maxstatems);
+                _tripc_set_timeout(c, c->statems, _tripc_timeout_state_ready_ping);
             }
             break;
         case _TRIPC_STATE_END:

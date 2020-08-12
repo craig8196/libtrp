@@ -17,6 +17,10 @@ _trip_poll_new()
 {
     _trip_poll_t *w = tripm_alloc(sizeof(_trip_poll_t));
 
+    if (!w)
+    {
+        return w;
+    }
 
     int c = 0;
 
@@ -144,12 +148,30 @@ trip_run(trip_router_t *_r, int maxtimeout)
             break;
         }
 
+        if (_TRIPR_STATE_END == r->state)
+        {
+            c = EHOSTDOWN;
+            break;
+        }
+
+        if (_TRIPR_STATE_ERROR == r->state)
+        {
+            c = r->error;
+            break;
+        }
+
         _trip_poll_t *w = r->poll;
 
         uint64_t now = triptime_now();
         int timeout = maxtimeout;
+        printf("Max timeout: %d\n", timeout);
         {
+#if 1
+            int tmp = timerwheel_get(&r->wheel);
+#else
             int tmp = triptime_timeout(w->deadline, now);
+#endif
+            printf("Othertimeout: %d\n", tmp);
             if (tmp < timeout)
             {
                 timeout = tmp;
@@ -159,6 +181,7 @@ trip_run(trip_router_t *_r, int maxtimeout)
         
         for (;;)
         {
+            printf("Max timeout: %d\n", timeout);
             struct epoll_event eventlist[_TRIP_MAX_EVENTS];
             int nfds = epoll_wait(w->efd, eventlist, _TRIP_MAX_EVENTS, timeout);
 
@@ -211,7 +234,7 @@ trip_run(trip_router_t *_r, int maxtimeout)
                 break;
             }
 
-            timeout = (int)(deadline - now);
+            timeout = triptime_timeout(deadline, now);
         }
     } while (false);
 

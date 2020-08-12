@@ -89,6 +89,7 @@ struct _trip_router_s
     /* State */
     enum _tripr_state state;
     uint64_t statedeadline;
+    timer_entry_t *statetimer;
 
     /* Error Handling */
     int error;
@@ -139,6 +140,8 @@ void
 _trip_set_state(_trip_router_t *r, enum _tripr_state state);
 void
 _trip_qconnection(_trip_router_t *r, _trip_connection_t *c);
+timer_entry_t *
+_trip_timeout(_trip_router_t *r, int ms, void *data, timer_cb_t *cb);
 
 #ifdef __cplusplus
 }
