@@ -43,7 +43,7 @@ void
 reliable_set_timeout(trip_packet_t *p)
 {
     reliable_t *r = p->data;
-    r->timer = trip_timeout(p->router, 5, (void *)p, reliable_timeout);
+    r->timer = trip_timeout(p->router, 50, (void *)p, reliable_timeout);
 }
 
 static void

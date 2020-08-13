@@ -486,6 +486,9 @@ _trip_set_state(_trip_router_t *r, enum _tripr_state state)
             break;
     }
 
+    /* Set state since entering a state may trigger another state change. */
+    r->state = state;
+
     /* When entering the state, do this. */
     switch (state)
     {
@@ -545,8 +548,6 @@ _trip_set_state(_trip_router_t *r, enum _tripr_state state)
         default:
             break;
     }
-
-    r->state = state;
 }
 
 void

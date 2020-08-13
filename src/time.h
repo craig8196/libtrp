@@ -34,6 +34,8 @@ extern "C" {
 #include <stdint.h>
 
 
+#define TRIPTIME_END ((uint64_t)-1)
+
 /* TRiP Time */
 uint64_t
 triptime_now(void);

@@ -59,6 +59,8 @@ void
 timerwheel_destroy(timerwheel_t *tw);
 int
 timerwheel_get(timerwheel_t *tw);
+int
+timerwheel_get_with(timerwheel_t *tw, uint64_t now);
 timer_entry_t *
 timerwheel_add(timerwheel_t *tw, int timeout, void *data, timer_cb_t *cb);
 void

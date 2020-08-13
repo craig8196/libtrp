@@ -3,7 +3,6 @@
 
 #include <errno.h>
 #include <sys/epoll.h>
-#include <stdio.h>
 #include <string.h>
 
 #include "time.h"
@@ -12,7 +11,13 @@
 #include "util.h"
 
 
-_trip_poll_t *
+#define DEBUG_TRIPPOLL (1)
+#if DEBUG_TRIPPOLL
+#include <stdio.h>
+#endif
+
+
+static _trip_poll_t *
 _trip_poll_new()
 {
     _trip_poll_t *w = tripm_alloc(sizeof(_trip_poll_t));
@@ -43,7 +48,7 @@ _trip_poll_new()
     return w;
 }
 
-int
+static int
 _trip_fd_events_to_epoll(int events)
 {
     int eout = 0;
@@ -71,6 +76,16 @@ _trip_fd_events_to_epoll(int events)
     return eout;
 }
 
+/**
+ * @return The next timeout for the next call to epoll.
+ */
+static int
+next_timeout(_trip_router_t *r, int defaulttimeout, uint64_t now)
+{
+    int timeout = timerwheel_get_with(&r->wheel, now);
+    return timeout < defaulttimeout ? timeout : defaulttimeout;
+}
+
 void
 _trip_watch_cb(trip_router_t *_r, int fd, int events, void * UNUSED(data))
 {
@@ -96,10 +111,12 @@ _trip_watch_cb(trip_router_t *_r, int fd, int events, void * UNUSED(data))
         c = epoll_ctl(w->efd, EPOLL_CTL_DEL, fd, &ev);
     }
 
+#if DEBUG_TRIPPOLL
     if (c)
     {
         printf("Error on epoll (%d): %s", c, strerror(c));
     }
+#endif
 }
 
 void
@@ -133,8 +150,21 @@ trip_run_init(trip_router_t *_r)
     return c;
 }
 
+/**
+ * Drive communications forward.
+ *
+ * ERRORS:
+ * >EINVAL - likely trip_run_init was not called, or router has more error info
+ * >EHOSTDOWN - router is in END state
+ * >EINTR - epoll interrupted by signal handler, disable signals to avoid
+ *          or check for this error
+ * >other - check router for error, otherwise was error with epoll_wait
+ *
+ * @param maxtimeout - Zero or positive; negative indicates indefinite timeout.
+ * @return Zero on success; errno otherwise.
+ */
 int
-trip_run(trip_router_t *_r, int maxtimeout)
+trip_run(trip_router_t *_r, int timeout)
 {
     trip_torouter(r, _r);
 
@@ -142,18 +172,19 @@ trip_run(trip_router_t *_r, int maxtimeout)
 
     do
     {
+        /* Check that we are setup to perform epolling. */
         if (!r->poll)
         {
             c = EINVAL;
             break;
         }
 
+        /* Make sure that we not in an unproductive state. */
         if (_TRIPR_STATE_END == r->state)
         {
             c = EHOSTDOWN;
             break;
         }
-
         if (_TRIPR_STATE_ERROR == r->state)
         {
             c = r->error;
@@ -162,40 +193,35 @@ trip_run(trip_router_t *_r, int maxtimeout)
 
         _trip_poll_t *w = r->poll;
 
+        /* Save the timeout from the user as a deadline. */
         uint64_t now = triptime_now();
-        int timeout = maxtimeout;
-        printf("Max timeout: %d\n", timeout);
-        {
-#if 1
-            int tmp = timerwheel_get(&r->wheel);
-#else
-            int tmp = triptime_timeout(w->deadline, now);
+        uint64_t deadline = timeout < 0 ? TRIPTIME_END : triptime_deadline(timeout);
+        timeout = TRIPTIME_END == deadline ? 1024 : timeout;
+        timeout = next_timeout(r, timeout, now);
+#if DEBUG_TRIPPOLL
+        printf("Next timeout: %d\n", timeout);
 #endif
-            printf("Othertimeout: %d\n", tmp);
-            if (tmp < timeout)
-            {
-                timeout = tmp;
-            }
-        }
-        uint64_t deadline = triptime_deadline(timeout);
         
         for (;;)
         {
-            printf("Max timeout: %d\n", timeout);
+            /* Call epoll. */
             struct epoll_event eventlist[_TRIP_MAX_EVENTS];
             int nfds = epoll_wait(w->efd, eventlist, _TRIP_MAX_EVENTS, timeout);
 
             if (-1 == nfds)
             {
+                /* Error occurred. */
                 c = errno;
                 break;
             }
             else if (0 == nfds)
             {
+                /* Call timeout action. */
                 c = trip_action(_r, TRIP_SOCKET_TIMEOUT, 0);
             }
             else
             {
+                /* Call action for each file descriptor. */
                 int n;
                 for (n = 0; n < nfds; ++n)
                 {
@@ -222,19 +248,23 @@ trip_run(trip_router_t *_r, int maxtimeout)
                 }
             }
 
+            /* Break outer loop. */
             if (c)
             {
                 break;
             }
 
+            /* Update time. */
             now = triptime_now();
-
-            if (now >= deadline)
+            if (now >= deadline && TRIPTIME_END != deadline)
             {
+                /* Done, leave function. */
                 break;
             }
 
-            timeout = triptime_timeout(deadline, now);
+            /* Resolve next timeout. */
+            timeout = TRIPTIME_END == deadline ? 1024 : triptime_timeout(deadline, now);
+            timeout = next_timeout(r, timeout, now);
         }
     } while (false);
 

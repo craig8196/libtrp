@@ -38,8 +38,13 @@ timerwheel_destroy(timerwheel_t *tw)
 int
 timerwheel_get(timerwheel_t *tw)
 {
+    return timerwheel_get_with(tw, triptime_now());
+}
+
+int
+timerwheel_get_with(timerwheel_t *tw, uint64_t now)
+{
     int timeout = 1024;
-    uint64_t now = triptime_now();
     timer_entry_t **prev = &tw->head;
     timer_entry_t *curr = tw->head;
     timer_entry_t *next = NULL;

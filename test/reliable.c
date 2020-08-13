@@ -208,7 +208,8 @@ int main()
     printf("Entering run loop...\n");
     uint64_t now;
     int err;
-    while (!(err = trip_run(data.router, 15)))
+    trip_open_connection(data.router, &data, 0, NULL);
+    while (!(err = trip_run(data.router, 100)))
     {
         printf("Timeout...\n");
 
