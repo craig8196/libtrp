@@ -168,7 +168,7 @@ tripc_close(trip_connection_t *c, int gracems);
 #define TRIPS_OPT_ORDERED  (1 << 2)
 #define TRIPS_OPT_RELIABLE (1 << 3)
 trip_stream_t *
-tripc_open_stream(trip_connection_t *, int, int);
+tripc_open_stream(trip_connection_t *c, int sid, int options);
 
 
 /* TRiP Stream Interface */

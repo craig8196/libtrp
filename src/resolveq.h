@@ -20,46 +20,73 @@
  * SOFTWARE.
  ******************************************************************************/
 /**
- * @file libtrp.h
+ * @file resolveq.h
  * @author Craig Jacobson
- * @brief TRiP implementation.
+ * @brief Resolve Q. Connections pending resolving.
+ *
+ * The entire reason for this is to reduce size of cancelled connection
+ * due to resolve timeout.
+ * If the connection information is still resolving and we timeout, then
+ * we don't want the connection information stuck in packet interface
+ * space. We decouple the two so the user can be notified and the connection
+ * can be cleaned up ASAP.
  */
-#ifndef LIBTRP_HANDLES_H_
-#define LIBTRP_HANDLES_H_
+#ifndef _LIBTRP_RESOLVEQ_H_
+#define _LIBTRP_RESOLVEQ_H_
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 
-#include <stddef.h>
+#include <stdbool.h>
+
+#include "conn.h"
 
 
-/* TRiP Forward-Declared Handles */
-typedef struct trip_router_handle_s
+typedef struct resolveq_union_s
 {
-    void *data;
-} trip_router_t;
+    union
+    {
+        void *data;
+        struct resolveq_union_s *next;
+    } u;
+    bool inuse;
+} resolveq_union_t;
 
-typedef struct trip_connection_handle_s
+typedef struct resolveq_s
 {
-    void *data;
-    size_t ilen;
-    unsigned char *info;
-    trip_router_t *router;
-} trip_connection_t;
+    /* Length of the map/array. */
+    int len;
+    int size;
+    /* Map. */
+    resolveq_union_t *map;
+    /* Empty slot list. */
+    resolveq_union_t *free;
+} resolveq_t;
 
-typedef struct trip_stream_handle_s
-{
-    void *data;
-    trip_connection_t *connection;
-} trip_stream_t;
+void
+resolveq_init(resolveq_t *q);
 
-typedef int trip_socket_t;
+void
+resolveq_destroy(resolveq_t *q);
+
+void
+resolveq_clear(resolveq_t *q);
+
+int
+resolveq_put(resolveq_t *q, _trip_connection_t *c);
+
+_trip_connection_t *
+resolveq_pop(resolveq_t *q, int key);
+
+void
+resolveq_del(resolveq_t *q, int key);
 
 
 
 #ifdef __cplusplus
 }
 #endif
-#endif /* LIBTRP_HANDLES_H_ */
+#endif /* _LIBTRP_RESOLVEQ_H_ */
+
 

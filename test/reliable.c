@@ -67,6 +67,9 @@ router_handle_screen(trip_screen_t *screen)
     screen->allow = true;
 }
 
+const unsigned char MSG[] = "echo";
+const size_t MSGLEN = sizeof(MSG) - 1;
+
 /**
  * Handle connection event.
  */
@@ -76,20 +79,50 @@ router_handle_connection(trip_connection_t *c)
     switch (tripc_status(c))
     {
         case TRIPC_STATUSI_OPEN:
+            {
+                /* Sweet the server received the connection. */
+                // TODO next step here
+            }
             break;
         case TRIPC_STATUSI_CLOSED:
+            {
+            }
             break;
         case TRIPC_STATUSI_KILLED:
+            {
+            }
             break;
         case TRIPC_STATUSI_ERROR:
+            {
+            }
             break;
         case TRIPC_STATUSO_OPEN:
+            {
+                /* Sweet, we have a connection out. */
+                if (!c->data)
+                {
+                    int opts = TRIPS_OPT_PRIORITY
+                        | TRIPS_OPT_ORDERED
+                        | TRIPS_OPT_RELIABLE;
+                    c->data = tripc_open_stream(c, 0, opts);
+                    trips_send(c->data, MSGLEN, MSG);
+                }
+            }
             break;
         case TRIPC_STATUSO_CLOSED:
+            {
+                /* Closed normally by user. */
+            }
             break;
         case TRIPC_STATUSO_KILLED:
+            {
+                /* Closed because router is shutting down. */
+            }
             break;
         case TRIPC_STATUSO_ERROR:
+            {
+                // TODO get error message
+            }
             break;
         default:
             abort();

@@ -32,6 +32,7 @@ extern "C" {
 
 
 #include <stddef.h>
+#include <stdint.h>
 
 
 #include "connpeer.h"
@@ -51,6 +52,7 @@ enum _trip_message_q
 enum _tripc_state
 {
     _TRIPC_STATE_START,
+    _TRIPC_STATE_RESOLVE,
     _TRIPC_STATE_OPEN,
     _TRIPC_STATE_CHAL,
     _TRIPC_STATE_PING,
@@ -71,11 +73,13 @@ struct _trip_connection_s
 {
     /* Public and Frequently Accessed */
     void *data;
-    /* TODO Why is src in public section? */
-    int src; /* Where we are connected to. */
     size_t ilen;
     unsigned char *info;
     _trip_router_t *router;
+
+    /* Packet source key. */
+    int src;
+    int resolvekey;
     
     /* Status */
     enum trip_connection_status status;
@@ -91,10 +95,11 @@ struct _trip_connection_s
     int maxstatems;
     int growms;
     int statems;
+    int maxresolve;
 
     /* Error */
     int error;
-    char *emsg;
+    char *errmsg;
 
     /* Self information. */
     connself_t self;
@@ -134,10 +139,14 @@ void
 _tripc_destroy(_trip_connection_t *c);
 
 void
-_tripc_set_error(_trip_connection_t *c, int err);
+_tripc_cancel_timeout(_trip_connection_t *c);
+void
+_tripc_set_error(_trip_connection_t *c, int eval, const char *msg);
 void
 _tripc_start(_trip_connection_t *c);
-int
+void
+_tripc_resolved(_trip_connection_t *c);
+void
 _tripc_set_state(_trip_connection_t *c, enum _tripc_state state);
 void
 _tripc_send_add(_trip_connection_t *c, _trip_msg_t *m);

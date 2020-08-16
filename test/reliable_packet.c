@@ -33,7 +33,7 @@ void
 reliable_set_timeout(trip_packet_t *p);
 
 static void
-reliable_timeout(void *_p)
+reliable_timeout_cb(void *_p)
 {
     trip_packet_t *p = (trip_packet_t *)_p;
     reliable_set_timeout(p);
@@ -43,7 +43,7 @@ void
 reliable_set_timeout(trip_packet_t *p)
 {
     reliable_t *r = p->data;
-    r->timer = trip_timeout(p->router, 50, (void *)p, reliable_timeout);
+    r->timer = trip_timeout(p->router, 50, (void *)p, reliable_timeout_cb);
 }
 
 static void
@@ -63,8 +63,11 @@ reliable_unbind(trip_packet_t *p)
 }
 
 static void
-reliable_resolve(trip_packet_t *p, trip_connection_t *c)
+reliable_resolve(trip_packet_t *p, int rkey, size_t ilen, const unsigned char *info)
 {
+    ilen = ilen;
+    info = info;
+#if 0
     reliable_t *rel = p->data;
     if (NULL == rel->c[0])
     {
@@ -76,6 +79,10 @@ reliable_resolve(trip_packet_t *p, trip_connection_t *c)
     {
         trip_resolve(p->router, c, EBUSY);
     }
+#else
+    p = p;
+    rkey = rkey;
+#endif
 }
 
 static int

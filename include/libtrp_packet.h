@@ -36,16 +36,17 @@ extern "C" {
 #include "libtrp_handles.h"
 
 
-/* TRiP Packet to Router Communication */
+/* Timeout primitives. */
 typedef struct triptimer_s { int unused; } triptimer_t;
 typedef void triptimer_cb_t(void *data);
 
+/* TRiP Packet to Router Communication */
 void
 trip_seg(trip_router_t *r, int src, size_t len, void *buf);
 void
 trip_ready(trip_router_t *r);
 void
-trip_resolve(trip_router_t *r, trip_connection_t *c, int err);
+trip_resolve(trip_router_t *r, int rkey, int src, int err, const char *emsg);
 void
 trip_watch(trip_router_t *r, trip_socket_t fd, int events);
 triptimer_t *
@@ -57,11 +58,10 @@ trip_unready(trip_router_t *r, int err);
 void
 trip_error(trip_router_t *r, int error, const char *emsg);
 
-
 /* TRiP Packet Interface */
 typedef struct trip_packet_s trip_packet_t;
 typedef void trip_packet_bind_t(trip_packet_t *);
-typedef void trip_packet_resolve_t(trip_packet_t *, trip_connection_t *);
+typedef void trip_packet_resolve_t(trip_packet_t *, int rkey, size_t ilen, const unsigned char *info);
 typedef void trip_packet_cancel_t(trip_packet_t *, trip_connection_t *);
 typedef int trip_packet_send_t(trip_packet_t *, int src, size_t, void *buf);
 typedef int trip_packet_read_t(trip_packet_t *, trip_socket_t fd, int max);

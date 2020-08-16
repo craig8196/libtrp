@@ -33,6 +33,7 @@ extern "C" {
 
 #include "core.h"
 #include "connmap.h"
+#include "resolveq.h"
 #include "sendq.h"
 #include "sockmap.h"
 #include "trip_poll.h"
@@ -50,8 +51,7 @@ typedef struct _trip_open_s _trip_open_t;
 
 enum _tripr_state
 {
-    _TRIPR_STATE_START,
-    _TRIPR_STATE_STOP,
+    _TRIPR_STATE_START, /* Don't confuse start action with START state. */
     _TRIPR_STATE_BIND,
     _TRIPR_STATE_LISTEN,
     _TRIPR_STATE_CLOSE,
@@ -95,6 +95,9 @@ struct _trip_router_s
     int error;
     char *errmsg;
 
+    /* Resolve pending. */
+    resolveq_t resolveq;
+
     /* Connections. */
     connmap_t con;
 
@@ -136,6 +139,8 @@ struct _trip_router_s
     uint32_t flag;
 };
 
+void
+_trip_close_connection(_trip_router_t *r, _trip_connection_t *c);
 void
 _trip_set_state(_trip_router_t *r, enum _tripr_state state);
 void

@@ -34,6 +34,7 @@
 #include "time.h"
 #include "protocol.h"
 #include "pack.h"
+#include "resolveq.h"
 #include "sendq.h"
 #include "util.h"
 
@@ -54,7 +55,6 @@ _trip_state_str(int s)
     const char *map[] =
     {
         "_TRIPR_STATE_START",
-        "_TRIPR_STATE_STOP",
         "_TRIPR_STATE_BIND",
         "_TRIPR_STATE_LISTEN",
         "_TRIPR_STATE_CLOSE",
@@ -199,6 +199,18 @@ _trip_listen(_trip_router_t *r, trip_socket_t fd, int events)
             c = sendq_dq(&r->sendq);
         }
     }
+}
+
+/**
+ * Notify user and close out the connection, freeing resources.
+ */
+void
+_trip_close_connection(_trip_router_t *r, _trip_connection_t *c)
+{
+    c->router->connection((trip_connection_t *)c);
+    connmap_del(&r->con, c->self.id);
+    _tripc_destroy(c);
+    _trip_free_connection(c);
 }
 
 void
@@ -483,6 +495,9 @@ _trip_set_state(_trip_router_t *r, enum _tripr_state state)
             }
             break;
         default:
+            {
+                _trip_set_error(r, EINVAL, NULL);
+            }
             break;
     }
 
@@ -546,6 +561,9 @@ _trip_set_state(_trip_router_t *r, enum _tripr_state state)
             }
             break;
         default:
+            {
+                _trip_set_error(r, EINVAL, NULL);
+            }
             break;
     }
 }
@@ -576,28 +594,59 @@ trip_ready(trip_router_t *_r)
     }
 }
 
-/*
- * TODO what was the point of this?? callback for packet to use?
- * Point was to allow the packet interface to resolve connection info.
- * Should be assigned a source entry or some information for
- * sending data.
+/**
+ * Advance the connection state.
  */
 void
-trip_resolve(trip_router_t *_r, trip_connection_t *_c, int err)
+_trip_resolve_delay_success_cb(void *_c)
 {
-    trip_torouter(r, _r);
+    trip_toconn(c, _c);
+    // TODO advance the connection state
+
+    _tripc_resolved(c);
+}
+
+/**
+ * Report failure to the user.
+ */
+void
+_trip_resolve_delay_failure_cb(void *_c)
+{
     trip_toconn(c, _c);
 
-    if (!err)
+    _trip_close_connection(c->router, c);
+}
+
+/**
+ * Allow packet interface to report completion of resolving a destination.
+ * By this point the packet interface has assigned a source entry.
+ * @note This method will delay reporting to the user to shorten the call stack.
+ * @param c - The connection being resolved.
+ * @param err - Zero if connection was resolved; errno otherwise.
+ */
+void
+trip_resolve(trip_router_t *_r, int rkey, int src, int err, const char *emsg)
+{
+    trip_torouter(r, _r);
+
+    _trip_connection_t *c = resolveq_pop(&r->resolveq, rkey);
+
+    if (NULL == c)
     {
-        _tripc_start(c);
+        /* Timeout already occurred, bummer. */
+        return;
+    }
+
+    _tripc_cancel_timeout(c);
+    c->src = src;
+    if (!err && !emsg)
+    {
+        _trip_timeout(r, 0, c, _trip_resolve_delay_success_cb);
     }
     else
     {
-        _tripc_set_error(c, err);
-        r->connection((trip_connection_t *)c);
-        _tripc_destroy(c);
-        _trip_free_connection(c);
+        _tripc_set_error(c, err, emsg);
+        _trip_timeout(r, 0, c, _trip_resolve_delay_failure_cb);
     }
 }
 
@@ -700,6 +749,7 @@ trip_new(enum trip_preset preset)
         r->max_in = r->max_conn;
         r->max_out = r->max_conn;
         r->max_streams = _TRIPR_DEFAULT_MAX_STREAM;
+        r->flag = _TRIPR_FLAG_ALLOW_IN | _TRIPR_FLAG_ALLOW_OUT;
 
         /* Modify values according to preset. */
         switch (preset)
@@ -724,6 +774,7 @@ trip_new(enum trip_preset preset)
                 break;
         }
 
+        resolveq_init(&r->resolveq);
         connmap_init(&r->con, r->max_conn);
         timerwheel_init(&r->wheel);
         // TODO set other settings
@@ -747,8 +798,9 @@ trip_free(trip_router_t *_r)
     tripm_cfree(r->poll);
     tripm_cfree(r->errmsg);
 
-    connmap_destroy(&r->con);
     timerwheel_destroy(&r->wheel);
+    connmap_destroy(&r->con);
+    resolveq_destroy(&r->resolveq);
 
     tripm_free(r);
 }
@@ -981,13 +1033,17 @@ trip_assign(trip_router_t *_r, trip_socket_t s, void *data)
 }
 
 /**
- * Start the router.
+ * Start the router. Connections may be opened.
+ * @warn Calling on router in END state results in resetting to START.
  * @return Zero on success; errno otherwise.
  */
 int
 trip_start(trip_router_t *_r)
 {
     trip_torouter(r, _r);
+
+    // TODO check that the router is configured properly
+
     if (_TRIPR_STATE_END == r->state)
     {
         r->state = _TRIPR_STATE_START;
@@ -995,6 +1051,8 @@ trip_start(trip_router_t *_r)
 
     if (_TRIPR_STATE_START == r->state)
     {
+        // TODO make asynchronous
+        // TODO use state transition, not action...
         return trip_action(_r, TRIP_SOCKET_TIMEOUT, 0);
     }
     else
@@ -1003,6 +1061,28 @@ trip_start(trip_router_t *_r)
     }
 }
 
+/**
+ * Asyncronously stop framework.
+ */
+void
+_trip_stop_async_cb(void *_r)
+{
+    trip_torouter(r, _r);
+
+    _trip_set_state(r, _TRIPR_STATE_CLOSE);
+}
+
+/**
+ * Stop the router and all connections.
+ *
+ * Cleanup is as follows:
+ * -Connections are notified of shutdown to close protocols nicely.
+ * -After timeout, connections are killed.
+ * -Packet interface is instructed to unbind from interfaces.
+ * -Packet interfaces are assumed dead after timeout, router ref is NULL'd.
+ *
+ * @return Zero on success; errno if in invalid state.
+ */
 int
 trip_stop(trip_router_t *_r)
 {
@@ -1012,7 +1092,11 @@ trip_stop(trip_router_t *_r)
 
     if (r->state <= _TRIPR_STATE_LISTEN)
     {
-        _trip_set_state(r, _TRIPR_STATE_CLOSE);
+        if (NULL == _trip_timeout(r, 0, r, _trip_stop_async_cb))
+        {
+            /* If no memory then call synchronously. */
+            _trip_set_state(r, _TRIPR_STATE_CLOSE);
+        }
     }
     else
     {
@@ -1034,15 +1118,46 @@ _trip_reject_connection(_trip_router_t *r, void *data, size_t ilen,
     c.data = data;
     c.ilen = ilen;
     c.info = info;
-    _tripc_set_error(&c, err);
+    _tripc_set_error(&c, err, NULL);
     r->connection((trip_connection_t *)&c);
+    _tripc_destroy(&c);
 }
 
+/**
+ * Callback to make open connection async.
+ */
+void
+_trip_open_connection_async_cb(void *_c)
+{
+    trip_toconn(c, _c);
+#if DEBUG_ROUTER
+    printf("%s\n", __func__);
+#endif
+
+    _trip_router_t *r = c->router;
+    _tripc_start(c);
+    r->packet->resolve(r->packet, c->resolvekey, c->ilen, c->info);
+}
+
+/**
+ * Try to resolve the connection.
+ * Success or failure will be reported to the connection
+ * callback via connection state.
+ * @param data - The data to associate with the connection information.
+ * @param ilen - The length of the information (see packet documentation).
+ * @param info - The information to specify where to connect to
+ *               (see packet documentation).
+ * TODO free connection using free connection and destroy connections functions
+ */
 void
 trip_open_connection(trip_router_t *_r, void *data, size_t ilen,
                      unsigned char *info)
 {
     trip_torouter(r, _r);
+
+#if DEBUG_ROUTER
+    printf("%s\n", __func__);
+#endif
 
     if (r->flag & _TRIPR_FLAG_ALLOW_OUT)
     {
@@ -1054,18 +1169,19 @@ trip_open_connection(trip_router_t *_r, void *data, size_t ilen,
             return;
         }
 
-        _tripc_init(c, r, true);
+        _tripc_init(c, r, false);
         c->data = data;
         c->ilen = ilen;
         c->info = info;
+        c->resolvekey = resolveq_put(&r->resolveq, c);
 
         /* Acquire connection ID on this router. */
         if (connmap_add(&r->con, c))
         {
             /* Error. */
-            _tripc_set_error(c, EBUSY);
+            _tripc_set_error(c, EBUSY, NULL);
             r->connection((trip_connection_t *)c);
-            tripm_free(c);
+            _trip_free_connection(c);
             return;
         }
 
@@ -1073,7 +1189,16 @@ trip_open_connection(trip_router_t *_r, void *data, size_t ilen,
          * interpret the info and create comms entry
          * for this connection.
          */
-        r->packet->resolve(r->packet->data, (trip_connection_t *)c);
+        if (NULL == _trip_timeout(r, 0, c, _trip_open_connection_async_cb))
+        {
+            /* Error. */
+            _tripc_set_error(c, ENOMEM, NULL);
+            r->connection((trip_connection_t *)c);
+            _trip_free_connection(c);
+        }
+#if DEBUG_ROUTER
+    printf("%s: success\n", __func__);
+#endif
         return;
     }
     else

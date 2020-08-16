@@ -23,7 +23,7 @@ connmap_destroy(connmap_t *map)
 {
     if (map->map)
     {
-        free(map->map);
+        tripm_free(map->map);
         *map = (connmap_t){ 0 };
     }
 }
@@ -172,8 +172,7 @@ connmap_del(connmap_t *map, uint64_t id)
 
             if (!map->size)
             {
-                free(map->map);
-                map->map = NULL;
+                connmap_clear(map);
             }
 
             return c;

@@ -32,6 +32,7 @@
 #include "message.h"
 #include "pack.h"
 #include "protocol.h"
+#include "resolveq.h"
 #include "stream.h"
 #include "time.h"
 #include "trip.h"
@@ -42,13 +43,30 @@
 #include <string.h>
 
 
+#define DEBUG_CONNECTION (1)
+
+#if DEBUG_CONNECTION
+#include <stdio.h>
+#endif
+
 /* CONNECTION PRIVATE */
 
 void
-_tripc_set_error(_trip_connection_t *c, int err)
+_tripc_set_error(_trip_connection_t *c, int eval, const char *msg)
 {
-    // TODO
-    c = c; err = err;
+    /* Prevent multiple calls. */
+    if (_TRIPC_STATE_ERROR != c->state)
+    {
+        size_t mlen = strlen(msg ? msg : "");
+        c->error = eval;
+        c->errmsg = tripm_alloc(mlen + 1);
+        if (c->errmsg)
+        {
+            memcpy(c->errmsg, msg, mlen);
+            c->errmsg[mlen] = 0;
+        }
+        _tripc_set_state(c, _TRIPC_STATE_ERROR);
+    }
 }
 
 void
@@ -138,18 +156,30 @@ _tripc_generate_ping(_trip_connection_t *c)
     c->ping.timestamp = triptime_now();
 }
 
-int
+void
 _tripc_timeout(_trip_connection_t *c);
+
+void
+_tripc_timeout_state_resolve_cb(void *_c)
+{
+    trip_toconn(c, _c);
+
+#if DEBUG_CONNECTION
+    printf("%s\n", __func__);
+#endif
+    
+    resolveq_del(&c->router->resolveq, c->resolvekey);
+    c->statetimer = NULL;
+    _tripc_timeout(c);
+    _trip_close_connection(c->router, c);
+}
 
 void
 _tripc_timeout_state_resend(void *_c)
 {
     trip_toconn(c, _c);
 
-    if (_tripc_timeout(c))
-    {
-        // TODO report fatal error to user
-    }
+    _tripc_timeout(c);
 }
 
 void
@@ -157,10 +187,7 @@ _tripc_timeout_state_ready_ping(void *_c)
 {
     trip_toconn(c, _c);
 
-    if (_tripc_set_state(c, _TRIPC_STATE_PING))
-    {
-        // TODO report fatal error to user
-    }
+    _tripc_set_state(c, _TRIPC_STATE_PING);
 }
 
 /**
@@ -205,7 +232,7 @@ _tripc_set_timeout(_trip_connection_t *c, int ms, timer_cb_t *cb)
 }
 
 void
-_tripc_clear_timeout(_trip_connection_t *c)
+_tripc_cancel_timeout(_trip_connection_t *c)
 {
     if (c->statetimer)
     {
@@ -443,15 +470,20 @@ _tripc_read(_trip_connection_t *c, unsigned char control, size_t len, const unsi
     return c->error;
 }
 
-int
+void
 _tripc_timeout(_trip_connection_t *c)
 {
     switch (c->state)
     {
         case _TRIPC_STATE_START:
             {
+                /* Should never reach here. */
+            }
+            break;
+        case _TRIPC_STATE_RESOLVE:
+            {
                 /* Waiting for resolve has timed out. */
-                _tripc_set_error(c, ETIME);
+                _tripc_set_error(c, ETIME, NULL);
             }
             break;
         case _TRIPC_STATE_OPEN:
@@ -502,8 +534,6 @@ _tripc_timeout(_trip_connection_t *c)
             }
             break;
     }
-
-    return c->error;
 }
 
 size_t
@@ -572,6 +602,7 @@ _tripc_init(_trip_connection_t *c, _trip_router_t *r, bool incoming)
     c->router = r;
     c->incoming = incoming;
     streammap_init(&c->streams, r->max_streams);
+    c->maxresolve = 500;
 }
 
 /**
@@ -581,6 +612,9 @@ void
 _tripc_destroy(_trip_connection_t *c)
 {
     streammap_destroy(&c->streams);
+
+    tripm_cfree(c->errmsg);
+    c->errmsg = NULL;
 }
 
 /**
@@ -626,7 +660,7 @@ _tripc_flag_open_seq(_trip_connection_t *c, uint32_t seq)
 /**
  * @brief Change states and do proper create/destroy when entering/leaving.
  */
-int
+void
 _tripc_set_state(_trip_connection_t *c, enum _tripc_state state)
 {
     /* When leaving the state, do this. */
@@ -634,33 +668,37 @@ _tripc_set_state(_trip_connection_t *c, enum _tripc_state state)
     {
         case _TRIPC_STATE_START:
             {
-                /* May be set to prevent resolve failure. */
-                _tripc_clear_timeout(c);
+                /* Nothing here. */
+            }
+            break;
+        case _TRIPC_STATE_RESOLVE:
+            {
+                _tripc_cancel_timeout(c);
             }
             break;
         case _TRIPC_STATE_OPEN:
             {
-                _tripc_clear_timeout(c);
+                _tripc_cancel_timeout(c);
             }
             break;
         case _TRIPC_STATE_CHAL:
             {
-                _tripc_clear_timeout(c);
+                _tripc_cancel_timeout(c);
             }
             break;
         case _TRIPC_STATE_PING:
             {
-                _tripc_clear_timeout(c);
+                _tripc_cancel_timeout(c);
             }
             break;
         case _TRIPC_STATE_READY:
             {
-                _tripc_clear_timeout(c);
+                _tripc_cancel_timeout(c);
             }
             break;
         case _TRIPC_STATE_CLOSE:
             {
-                _tripc_clear_timeout(c);
+                _tripc_cancel_timeout(c);
             }
             break;
         case _TRIPC_STATE_END:
@@ -678,11 +716,21 @@ _tripc_set_state(_trip_connection_t *c, enum _tripc_state state)
             break;
     }
 
+    c->state = state;
+
     /* When entering the state, do this. */
     switch (state)
     {
         case _TRIPC_STATE_START:
-            /* Do nothing, shouldn't get here. */
+            {
+                /* Do nothing, shouldn't get here. */
+            }
+            break;
+        case _TRIPC_STATE_RESOLVE:
+            {
+                /* Set a timeout. */
+                _tripc_set_timeout(c, c->maxresolve, _tripc_timeout_state_resolve_cb);
+            }
             break;
         case _TRIPC_STATE_OPEN:
             {
@@ -734,8 +782,6 @@ _tripc_set_state(_trip_connection_t *c, enum _tripc_state state)
         default:
             break;
     }
-
-    return c->error;
 }
 
 /**
@@ -815,26 +861,35 @@ _tripc_send_clear(_trip_connection_t *c, _trip_msg_t *m)
 /* CONNECTION SHARED */
 
 /**
- * @brief Start the connection. Timeouts and state will be set.
+ * Start the connection. Timeouts and state will be set.
  */
 void
 _tripc_start(_trip_connection_t *c)
 {
     if (_TRIPC_STATE_START != c->state)
     {
-        _tripc_set_error(c, EINVAL);
+        _tripc_set_error(c, EINVAL, NULL);
         // TODO close connection
         return;
     }
 
-    enum _tripc_state state = _TRIPC_STATE_OPEN;
+    enum _tripc_state state = _TRIPC_STATE_RESOLVE;
     if (c->incoming)
     {
-        // TODO hmmm, shouldn't be calling start to get to challenge state...
+        // TODO hmmm, shouldn't be calling start to get to challenge state...?
         state = _TRIPC_STATE_CHAL;
     }
 
     _tripc_set_state(c, state);
+}
+
+/**
+ * Notify the connection that the address information has been resolved.
+ */
+void
+_tripc_resolved(_trip_connection_t *c)
+{
+    _tripc_set_state(c, _TRIPC_STATE_OPEN);
 }
 
 /**
