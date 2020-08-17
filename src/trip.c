@@ -77,10 +77,31 @@ _trip_free_connection(_trip_connection_t *c)
     tripm_free(c);
 }
 
+timer_entry_t *
+_trip_timeout(_trip_router_t *r, int ms, void *data, timer_cb_t *cb);
+void
+_trip_listen(_trip_router_t *r, trip_socket_t fd, int events);
+
+void
+_trip_send_immediately_cb(void *_r)
+{
+    trip_torouter(r, _r);
+
+#if DEBUG_ROUTER
+    printf("%s\n", __func__);
+#endif
+
+    _trip_listen(r, TRIP_SOCKET_TIMEOUT, 0);
+}
+
 void
 _trip_qconnection(_trip_router_t *r, _trip_connection_t *c)
 {
     sendq_nq(&r->sendq, c);
+    if (r->flag | _TRIPR_FLAG_ALWAYS_READY)
+    {
+        _trip_timeout(r, 0, r, _trip_send_immediately_cb);
+    }
 }
 
 void
@@ -157,7 +178,47 @@ _trip_listen(_trip_router_t *r, trip_socket_t fd, int events)
 {
     if (TRIP_SOCKET_TIMEOUT == fd)
     {
-        // TODO ??? check if actuall socket timeout or connection???
+        /* Rate limit number of send. */
+        _trip_connection_t *c = sendq_dq(&r->sendq);
+        trip_packet_t *p = r->packet;
+
+        while (c)
+        {
+            // TODO get actual buffer? i think _tripc_send is populating the buffer
+            if (!r->sendlen)
+            {
+                r->sendlen = _tripc_send(c, r->buflen, r->buf);
+            }
+
+            if (r->sendlen > 0 && r->sendlen != NPOS)
+            {
+                int error = p->send(p->data, c->src, r->sendlen, r->buf);
+
+                if (error)
+                {
+                    // TODO handle send error
+                    break;
+                }
+
+                r->sendlen = 0;
+
+                sendq_nq(&r->sendq, c);
+            }
+            else if (r->sendlen == NPOS)
+            {
+                // TODO check connection write error code
+                // TODO terminate connection?
+                /* Don't re-enqueue. */
+            }
+            else
+            {
+                /* Zero, didn't need to send anything... Incorrent enqueue
+                 * or state resolved.
+                 */
+            }
+
+            c = sendq_dq(&r->sendq);
+        }
         return;
     }
 
@@ -601,7 +662,10 @@ void
 _trip_resolve_delay_success_cb(void *_c)
 {
     trip_toconn(c, _c);
-    // TODO advance the connection state
+
+#if DEBUG_ROUTER
+    printf("%s\n", __func__);
+#endif
 
     _tripc_resolved(c);
 }
@@ -629,6 +693,10 @@ trip_resolve(trip_router_t *_r, int rkey, int src, int err, const char *emsg)
 {
     trip_torouter(r, _r);
 
+#if DEBUG_ROUTER
+    printf("%s\n", __func__);
+#endif
+
     _trip_connection_t *c = resolveq_pop(&r->resolveq, rkey);
 
     if (NULL == c)
@@ -637,6 +705,9 @@ trip_resolve(trip_router_t *_r, int rkey, int src, int err, const char *emsg)
         return;
     }
 
+    /* You must cancel the timeout so we don't have a race condition
+     * with delay of the resolve.
+     */
     _tripc_cancel_timeout(c);
     c->src = src;
     if (!err && !emsg)
@@ -650,13 +721,23 @@ trip_resolve(trip_router_t *_r, int rkey, int src, int err, const char *emsg)
     }
 }
 
+/**
+ * Tell the router to watch certain fild descriptors/sockets.
+ */
 void
 trip_watch(trip_router_t *_r, trip_socket_t fd, int events)
 {
     trip_torouter(r, _r);
 
-    void *data = sockmap_get(&r->sockmap, fd);
-    r->watch(_r, fd, events, data);
+    if (TRIP_SOCKET_TIMEOUT == fd)
+    {
+        r->flag |= _TRIPR_FLAG_ALWAYS_READY;
+    }
+    else
+    {
+        void *data = sockmap_get(&r->sockmap, fd);
+        r->watch(_r, fd, events, data);
+    }
 }
 
 void
@@ -750,6 +831,8 @@ trip_new(enum trip_preset preset)
         r->max_out = r->max_conn;
         r->max_streams = _TRIPR_DEFAULT_MAX_STREAM;
         r->flag = _TRIPR_FLAG_ALLOW_IN | _TRIPR_FLAG_ALLOW_OUT;
+        r->buflen = 1200;
+        r->buf = tripm_alloc(r->buflen);
 
         /* Modify values according to preset. */
         switch (preset)
@@ -797,6 +880,7 @@ trip_free(trip_router_t *_r)
 
     tripm_cfree(r->poll);
     tripm_cfree(r->errmsg);
+    tripm_cfree(r->buf);
 
     timerwheel_destroy(&r->wheel);
     connmap_destroy(&r->con);

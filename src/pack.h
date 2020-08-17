@@ -31,13 +31,17 @@ extern "C" {
 #endif
 
 
-int
-trip_pack_len(char *format);
-int
-trip_pack(int cap, unsigned char *buf, char *format, ...);
-// TODO change len arg to size_t? I'm inconsistent in int vs size_t...
-int
-trip_unpack(int blen, const unsigned char *buf, char *format, ...);
+#include <stddef.h>
+
+
+size_t
+trip_pack_len(const char *format);
+
+size_t
+trip_pack(size_t cap, unsigned char *buf, const char *format, ...);
+
+size_t
+trip_unpack(size_t blen, const unsigned char *buf, const char *format, ...);
 
 
 #ifdef __cplusplus

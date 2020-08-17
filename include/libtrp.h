@@ -169,6 +169,10 @@ tripc_close(trip_connection_t *c, int gracems);
 #define TRIPS_OPT_RELIABLE (1 << 3)
 trip_stream_t *
 tripc_open_stream(trip_connection_t *c, int sid, int options);
+int
+tripc_get_errno(trip_connection_t *c);
+const char *
+tripc_get_errmsg(trip_connection_t *c);
 
 
 /* TRiP Stream Interface */

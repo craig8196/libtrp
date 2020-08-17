@@ -51,6 +51,25 @@
 
 /* CONNECTION PRIVATE */
 
+const char *
+_tripc_state_str(int s)
+{
+    const char *map[] =
+    {
+        "_TRIPC_STATE_START",
+        "_TRIPC_STATE_RESOLVE",
+        "_TRIPC_STATE_OPEN",
+        "_TRIPC_STATE_CHAL",
+        "_TRIPC_STATE_PING",
+        "_TRIPC_STATE_READY",
+        "_TRIPC_STATE_READY_PING",
+        "_TRIPC_STATE_CLOSE",
+        "_TRIPC_STATE_END",
+        "_TRIPC_STATE_ERROR",
+    };
+    return map[s];
+}
+
 void
 _tripc_set_error(_trip_connection_t *c, int eval, const char *msg)
 {
@@ -156,9 +175,14 @@ _tripc_generate_ping(_trip_connection_t *c)
     c->ping.timestamp = triptime_now();
 }
 
+int
+_tripc_get_growth(_trip_connection_t *c);
 void
-_tripc_timeout(_trip_connection_t *c);
+_tripc_set_timeout(_trip_connection_t *c, int ms, timer_cb_t *cb);
 
+/**
+ * Resolve has timedout.
+ */
 void
 _tripc_timeout_state_resolve_cb(void *_c)
 {
@@ -168,18 +192,32 @@ _tripc_timeout_state_resolve_cb(void *_c)
     printf("%s\n", __func__);
 #endif
     
+    /* Cleanup resolve entry. */
     resolveq_del(&c->router->resolveq, c->resolvekey);
+    /* Clear timer ref. */
     c->statetimer = NULL;
-    _tripc_timeout(c);
+    /* Set error and destroy. */
+    _tripc_set_error(c, ETIME, NULL);
     _trip_close_connection(c->router, c);
 }
 
 void
-_tripc_timeout_state_resend(void *_c)
+_tripc_timeout_state_resend_cb(void *_c)
 {
     trip_toconn(c, _c);
 
-    _tripc_timeout(c);
+    uint64_t now = triptime_now();
+    if (now > c->statedeadline)
+    {
+        _tripc_set_error(c, ETIME, NULL);
+        _trip_close_connection(c->router, c);
+        return;
+    }
+    else
+    {
+        _tripc_set_send(c);
+        _tripc_set_timeout(c, _tripc_get_growth(c), _tripc_timeout_state_resend_cb);
+    }
 }
 
 void
@@ -270,7 +308,37 @@ _tripc_send_data(_trip_connection_t *c, size_t blen, void *buf)
 size_t
 _tripc_send_open(_trip_connection_t *c, size_t blen, void *buf)
 {
-    return trip_pack(blen, buf, "sCQWHboQQnkIIIIOS",
+#if DEBUG_CONNECTION
+    printf("%s\n", __func__);
+#endif
+    /*
+    | Octets | Field |
+    |:------ |:----- |
+    | PRE | PREFIX
+    | 2 | Major Version ID
+    | VD | Routing Information (Binary)
+    | OPENING INFO |
+        | Octets | Field |
+        |:------ |:----- |
+        | 48 | Encrypt Padding
+        | 4 | Receiver ID for future responses/requests
+        | 8 | Timestamp
+        | 24 | Nonce client (Zeroes if unencrypted)
+        | 32 | Public key client (Zeroes if unencrypted)
+        | 4 | Sender Max Credit
+        | 4 | Sender Max Streams
+        | 4 | Sender Max Message Size
+        | 4 | Sender Max Messages
+        | S | SIGNATURE (OUTSIDE ENCRYPTION) |
+
+    */
+    static const char fmt[] = "sCQWHboQQnkIIIIOS";
+
+#if DEBUG_CONNECTION
+    printf("%s: packlen(%lu)\n", __func__, trip_pack_len(fmt));
+#endif
+
+    return trip_pack(blen, buf, fmt,
         (uint8_t)_TRIP_CONTROL_OPEN,
         (uint64_t)0,
         _tripc_seq(c),
@@ -470,72 +538,6 @@ _tripc_read(_trip_connection_t *c, unsigned char control, size_t len, const unsi
     return c->error;
 }
 
-void
-_tripc_timeout(_trip_connection_t *c)
-{
-    switch (c->state)
-    {
-        case _TRIPC_STATE_START:
-            {
-                /* Should never reach here. */
-            }
-            break;
-        case _TRIPC_STATE_RESOLVE:
-            {
-                /* Waiting for resolve has timed out. */
-                _tripc_set_error(c, ETIME, NULL);
-            }
-            break;
-        case _TRIPC_STATE_OPEN:
-            {
-                _tripc_set_timeout(c, 3000, _tripc_timeout_state_resend); // TODO 2x expected ping
-                _tripc_set_send(c);
-            }
-            break;
-        case _TRIPC_STATE_CHAL:
-            {
-                _tripc_set_timeout(c, 3000, _tripc_timeout_state_resend); // TODO 2x expected ping
-                _tripc_set_send(c);
-            }
-            break;
-        case _TRIPC_STATE_PING:
-            {
-                _tripc_set_timeout(c, 3000, _tripc_timeout_state_resend); // TODO 2x expected ping
-                _tripc_set_send(c);
-            }
-            break;
-        case _TRIPC_STATE_READY:
-            {
-                _tripc_set_timeout(c, 3000, _tripc_timeout_state_resend); // TODO 2x expected ping
-                _tripc_set_send(c);
-            }
-            break;
-        case _TRIPC_STATE_READY_PING:
-            {
-                _tripc_set_timeout(c, 3000, _tripc_timeout_state_resend); // TODO 2x expected ping
-                _tripc_set_send(c);
-            }
-            break;
-        case _TRIPC_STATE_END:
-            {
-                _tripc_set_timeout(c, 3000, _tripc_timeout_state_resend); // TODO 2x expected ping
-                _tripc_set_send(c);
-            }
-            break;
-        case _TRIPC_STATE_ERROR:
-            {
-                _tripc_set_timeout(c, 3000, _tripc_timeout_state_resend); // TODO 2x expected ping
-                _tripc_set_send(c);
-            }
-            break;
-        default:
-            {
-                c->error = EINVAL;
-            }
-            break;
-    }
-}
-
 size_t
 _tripc_send(_trip_connection_t *c, size_t len, void *buf)
 {
@@ -543,12 +545,21 @@ _tripc_send(_trip_connection_t *c, size_t len, void *buf)
     {
         case _TRIPC_STATE_START:
             {
+                // TODO does this trigger an error and kill the connection?
+                return NPOS;
+            }
+            break;
+        case _TRIPC_STATE_RESOLVE:
+            {
+                // TODO does this trigger an error and kill the connection?
                 return NPOS;
             }
             break;
         case _TRIPC_STATE_OPEN:
             {
-                return _tripc_send_open(c, len, buf);
+                size_t wlen = _tripc_send_open(c, len, buf);
+                printf("len pack: %lu\n", wlen);
+                return wlen;
             }
             break;
         case _TRIPC_STATE_CHAL:
@@ -663,6 +674,10 @@ _tripc_flag_open_seq(_trip_connection_t *c, uint32_t seq)
 void
 _tripc_set_state(_trip_connection_t *c, enum _tripc_state state)
 {
+#if DEBUG_CONNECTION
+    printf("%s: from(%s) -> to(%s)\n", __func__, _tripc_state_str(c->state), _tripc_state_str((int)state));
+#endif
+    
     /* When leaving the state, do this. */
     switch(state)
     {
@@ -737,8 +752,8 @@ _tripc_set_state(_trip_connection_t *c, enum _tripc_state state)
                 _tripc_mk_keys(c);
                 _tripc_set_deadline(c, c->maxstatems);
                 _tripc_set_growth(c, c->statems);
-                _tripc_set_timeout(c, _tripc_get_growth(c), _tripc_timeout_state_resend);
                 _tripc_set_send(c);
+                _tripc_set_timeout(c, _tripc_get_growth(c), _tripc_timeout_state_resend_cb);
             }
             break;
         case _TRIPC_STATE_CHAL:
@@ -746,7 +761,7 @@ _tripc_set_state(_trip_connection_t *c, enum _tripc_state state)
                 _tripc_mk_keys(c);
                 _tripc_set_deadline(c, c->maxstatems);
                 _tripc_set_growth(c, c->statems);
-                _tripc_set_timeout(c, _tripc_get_growth(c), _tripc_timeout_state_resend);
+                _tripc_set_timeout(c, _tripc_get_growth(c), _tripc_timeout_state_resend_cb);
                 _tripc_set_send(c);
             }
             break;
@@ -755,7 +770,7 @@ _tripc_set_state(_trip_connection_t *c, enum _tripc_state state)
                 _tripc_generate_ping(c);
                 _tripc_set_deadline(c, c->ping.maxms);
                 _tripc_set_growth(c, c->ping.ms);
-                _tripc_set_timeout(c, _tripc_get_growth(c), _tripc_timeout_state_resend);
+                _tripc_set_timeout(c, _tripc_get_growth(c), _tripc_timeout_state_resend_cb);
                 _tripc_set_send(c);
             }
             break;
@@ -974,5 +989,25 @@ tripc_open_stream(trip_connection_t *_c, int sid, int options)
     } while (false);
 
     return (trip_stream_t *)s;
+}
+
+int
+tripc_get_errno(trip_connection_t *_c)
+{
+    trip_toconn(c, _c);
+    return c->error;
+}
+
+const char *
+tripc_get_errmsg(trip_connection_t *_c)
+{
+    trip_toconn(c, _c);
+
+    if (c->error && !c->errmsg)
+    {
+        c->errmsg = strdup(strerror(c->error));
+    }
+
+    return c->errmsg;
 }
 

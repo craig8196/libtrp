@@ -66,6 +66,7 @@ enum _tripr_state
 #define _TRIPR_FLAG_ALLOW_PLAIN_SEGM   (1 << 3)
 #define _TRIPR_FLAG_ALLOW_PLAIN_SIGN   (1 << 4)
 #define _TRIPR_FLAG_FREE_PACKET        (1 << 5)
+#define _TRIPR_FLAG_ALWAYS_READY       (1 << 6)
 
 #define _TRIPR_DEFAULT_MAX_CONN (1 << 19)
 #define _TRIPR_DEFAULT_MAX_STREAM (8)
@@ -106,6 +107,9 @@ struct _trip_router_s
 
     /* Send Management */
     sendq_t sendq;
+    unsigned char *buf;
+    size_t buflen;
+    size_t sendlen;
 
     /* Packet Interface */
     trip_packet_t *packet;

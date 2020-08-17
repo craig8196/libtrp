@@ -94,6 +94,7 @@ router_handle_connection(trip_connection_t *c)
             break;
         case TRIPC_STATUSI_ERROR:
             {
+                printf("CONNECTION ERROR: %s\n", tripc_get_errmsg(c));
             }
             break;
         case TRIPC_STATUSO_OPEN:
@@ -121,7 +122,7 @@ router_handle_connection(trip_connection_t *c)
             break;
         case TRIPC_STATUSO_ERROR:
             {
-                // TODO get error message
+                printf("CONNECTION ERROR: %s\n", tripc_get_errmsg(c));
             }
             break;
         default:

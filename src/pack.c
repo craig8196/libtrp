@@ -32,8 +32,9 @@
 #include <string.h>
 #include <stdio.h>
 
-#include "libtrp.h"
 #include "crypto.h"
+#include "libtrp.h"
+#include "util.h"
 
 #define TRIPPACK_MAX_VAR (sizeof(uint32_t))
 
@@ -195,8 +196,8 @@ unpacku64(unsigned char *buf)
  * See format specifiers in trip_pack documentation.
  * @return Max length of data.
  */
-int
-trip_pack_len(char *format)
+size_t
+trip_pack_len(const char *format)
 {
     unsigned int len = 0;
 
@@ -286,8 +287,8 @@ _trip_uvar_len(uint32_t n)
  *
  * @return Length on success; -1 on error.
  */
-int
-trip_pack(int cap, unsigned char *buf, char *format, ...)
+size_t
+trip_pack(size_t cap, unsigned char *buf, const char *format, ...)
 {
 	va_list ap;
 
@@ -310,7 +311,7 @@ trip_pack(int cap, unsigned char *buf, char *format, ...)
     /* Buffers */
     unsigned char *raw = NULL;
 
-	int size = 0;
+	size_t size = 0;
 
 	va_start(ap, format);
 
@@ -322,7 +323,7 @@ trip_pack(int cap, unsigned char *buf, char *format, ...)
                 size += 1;
                 if (size > cap)
                 {
-                    size = -1;
+                    size = NPOS;
                     goto _trip_pack_end;
                 }
                 c = (signed char)va_arg(ap, int); // promoted
@@ -333,7 +334,7 @@ trip_pack(int cap, unsigned char *buf, char *format, ...)
                 size += 1;
                 if (size > cap)
                 {
-                    size = -1;
+                    size = NPOS;
                     goto _trip_pack_end;
                 }
                 C = (unsigned char)va_arg(ap, unsigned int); // promoted
@@ -344,7 +345,7 @@ trip_pack(int cap, unsigned char *buf, char *format, ...)
                 size += 2;
                 if (size > cap)
                 {
-                    size = -1;
+                    size = NPOS;
                     goto _trip_pack_end;
                 }
                 h = va_arg(ap, int);
@@ -356,7 +357,7 @@ trip_pack(int cap, unsigned char *buf, char *format, ...)
                 size += 2;
                 if (size > cap)
                 {
-                    size = -1;
+                    size = NPOS;
                     goto _trip_pack_end;
                 }
                 H = va_arg(ap, unsigned int);
@@ -368,7 +369,7 @@ trip_pack(int cap, unsigned char *buf, char *format, ...)
                 size += 4;
                 if (size > cap)
                 {
-                    size = -1;
+                    size = NPOS;
                     goto _trip_pack_end;
                 }
                 i = va_arg(ap, long int);
@@ -380,7 +381,7 @@ trip_pack(int cap, unsigned char *buf, char *format, ...)
                 size += 4;
                 if (size > cap)
                 {
-                    size = -1;
+                    size = NPOS;
                     goto _trip_pack_end;
                 }
                 I = va_arg(ap, unsigned long int);
@@ -392,7 +393,7 @@ trip_pack(int cap, unsigned char *buf, char *format, ...)
                 size += 8;
                 if (size > cap)
                 {
-                    size = -1;
+                    size = NPOS;
                     goto _trip_pack_end;
                 }
                 q = va_arg(ap, long long int);
@@ -404,7 +405,7 @@ trip_pack(int cap, unsigned char *buf, char *format, ...)
                 size += 8;
                 if (size > cap)
                 {
-                    size = -1;
+                    size = NPOS;
                     goto _trip_pack_end;
                 }
                 Q = va_arg(ap, unsigned long long int);
@@ -413,7 +414,7 @@ trip_pack(int cap, unsigned char *buf, char *format, ...)
                 break;
 
             case 'p':
-                size = -1;
+                size = NPOS;
                 goto _trip_pack_end;
                 break;
 
@@ -423,7 +424,7 @@ trip_pack(int cap, unsigned char *buf, char *format, ...)
                 size += i + 1;
                 if (size > cap)
                 {
-                    size = -1;
+                    size = NPOS;
                     goto _trip_pack_end;
                 }
                 *buf = i;
@@ -440,7 +441,7 @@ trip_pack(int cap, unsigned char *buf, char *format, ...)
                 size += i + 1;
                 if (size > cap)
                 {
-                    size = -1;
+                    size = NPOS;
                     goto _trip_pack_end;
                 }
                 *buf = i;
@@ -455,7 +456,7 @@ trip_pack(int cap, unsigned char *buf, char *format, ...)
                 size += _TRIP_NONCE;
                 if (size > cap)
                 {
-                    size = -1;
+                    size = NPOS;
                     goto _trip_pack_end;
                 }
                 raw = va_arg(ap, unsigned char *);
@@ -467,7 +468,7 @@ trip_pack(int cap, unsigned char *buf, char *format, ...)
                 size += TRIP_KEY_PUB;
                 if (size > cap)
                 {
-                    size = -1;
+                    size = NPOS;
                     goto _trip_pack_end;
                 }
                 raw = va_arg(ap, unsigned char *);
@@ -476,7 +477,7 @@ trip_pack(int cap, unsigned char *buf, char *format, ...)
                 break;
 
             default:
-                size = -1;
+                size = NPOS;
                 goto _trip_pack_end;
                 break;
 		}
@@ -492,8 +493,8 @@ trip_pack(int cap, unsigned char *buf, char *format, ...)
  * See documentation in trip_pack.
  * @return Zero on success; errno otherwise.
  */
-int
-trip_unpack(int blen, unsigned char *buf, char *format, ...)
+size_t
+trip_unpack(size_t blen, unsigned char *buf, const char *format, ...)
 {
 	va_list ap;
 
@@ -517,7 +518,7 @@ trip_unpack(int blen, unsigned char *buf, char *format, ...)
     unsigned char *raw;
     unsigned char **pointer;
 
-	int len = 0;
+	size_t len = 0;
 
 	va_start(ap, format);
 
@@ -529,7 +530,7 @@ trip_unpack(int blen, unsigned char *buf, char *format, ...)
                 len++;
                 if (len > blen)
                 {
-                    len = -1;
+                    len = NPOS;
                     goto _trip_unpack_end;
                 }
                 c = va_arg(ap, signed char*);
@@ -541,7 +542,7 @@ trip_unpack(int blen, unsigned char *buf, char *format, ...)
                 len++;
                 if (len > blen)
                 {
-                    len = -1;
+                    len = NPOS;
                     goto _trip_unpack_end;
                 }
                 C = va_arg(ap, unsigned char*);
@@ -554,7 +555,7 @@ trip_unpack(int blen, unsigned char *buf, char *format, ...)
                 len += 2;
                 if (len > blen)
                 {
-                    len = -1;
+                    len = NPOS;
                     goto _trip_unpack_end;
                 }
                 h = va_arg(ap, int*);
@@ -566,7 +567,7 @@ trip_unpack(int blen, unsigned char *buf, char *format, ...)
                 len += 2;
                 if (len > blen)
                 {
-                    len = -1;
+                    len = NPOS;
                     goto _trip_unpack_end;
                 }
                 H = va_arg(ap, unsigned int*);
@@ -578,7 +579,7 @@ trip_unpack(int blen, unsigned char *buf, char *format, ...)
                 len += 4;
                 if (len > blen)
                 {
-                    len = -1;
+                    len = NPOS;
                     goto _trip_unpack_end;
                 }
                 i = va_arg(ap, long int*);
@@ -590,7 +591,7 @@ trip_unpack(int blen, unsigned char *buf, char *format, ...)
                 len += 4;
                 if (len > blen)
                 {
-                    len = -1;
+                    len = NPOS;
                     goto _trip_unpack_end;
                 }
                 I = va_arg(ap, unsigned long int*);
@@ -602,7 +603,7 @@ trip_unpack(int blen, unsigned char *buf, char *format, ...)
                 len += 8;
                 if (len > blen)
                 {
-                    len = -1;
+                    len = NPOS;
                     goto _trip_unpack_end;
                 }
                 q = va_arg(ap, long long int*);
@@ -614,7 +615,7 @@ trip_unpack(int blen, unsigned char *buf, char *format, ...)
                 len += 8;
                 if (len > blen)
                 {
-                    len = -1;
+                    len = NPOS;
                     goto _trip_unpack_end;
                 }
                 Q = va_arg(ap, unsigned long long int*);
@@ -632,7 +633,7 @@ trip_unpack(int blen, unsigned char *buf, char *format, ...)
                 len += *I;
                 if (len > blen)
                 {
-                    len = -1;
+                    len = NPOS;
                     goto _trip_unpack_end;
                 }
                 buf += *I;
@@ -642,14 +643,14 @@ trip_unpack(int blen, unsigned char *buf, char *format, ...)
                 {
                     if (len + 1 > blen)
                     {
-                        len = -1;
+                        len = NPOS;
                         goto _trip_unpack_end;
                     }
                     unsigned char l = *buf;
                     len += 1 + l;
                     if (l > 4 || len > blen)
                     {
-                        len = -1;
+                        len = NPOS;
                         goto _trip_unpack_end;
                     }
                     ++buf;
@@ -669,7 +670,7 @@ trip_unpack(int blen, unsigned char *buf, char *format, ...)
                 len += _TRIP_NONCE;
                 if (len > blen)
                 {
-                    len = -1;
+                    len = NPOS;
                     goto _trip_unpack_end;
                 }
                 raw = va_arg(ap, unsigned char *);
@@ -681,7 +682,7 @@ trip_unpack(int blen, unsigned char *buf, char *format, ...)
                 len += TRIP_KEY_PUB;
                 if (len > blen)
                 {
-                    len = -1;
+                    len = NPOS;
                     goto _trip_unpack_end;
                 }
                 raw = va_arg(ap, unsigned char *);
@@ -690,7 +691,7 @@ trip_unpack(int blen, unsigned char *buf, char *format, ...)
                 break;
 
             default:
-                len = -1;
+                len = NPOS;
                 goto _trip_unpack_end;
                 break;
 		}

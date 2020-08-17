@@ -59,10 +59,6 @@ enum _tripc_state
     _TRIPC_STATE_READY,
     _TRIPC_STATE_READY_PING,
     _TRIPC_STATE_CLOSE,
-    /* needed?
-    _TRIPC_STATE_NOTIFY,
-    _TRIPC_STATE_DISCONNECT,
-    */
     _TRIPC_STATE_END,
     _TRIPC_STATE_ERROR,
 };

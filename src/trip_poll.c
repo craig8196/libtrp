@@ -78,6 +78,7 @@ _trip_fd_events_to_epoll(int events)
 
 /**
  * @return The next timeout for the next call to epoll.
+ * TODO this needs to move into the router and the callback needs to be called
  */
 static int
 next_timeout(_trip_router_t *r, int defaulttimeout, uint64_t now)

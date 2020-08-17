@@ -4,6 +4,9 @@
 #include <errno.h>
 #include <stdlib.h>
 
+#include "libtrp.h"
+
+
 #ifdef UNUSED
 #elif defined(__GNUC__)
 # define UNUSED(x) UNUSED_ ## x __attribute__((unused))
@@ -19,7 +22,7 @@ typedef struct reliable_s
      * 0 - Opened connection from calling trip_open_connection.
      * 1 - Received connection.
      */
-    void *c[2];
+    int c[2];
     /*
      * Allocated buffer.
      */
@@ -50,6 +53,7 @@ static void
 reliable_bind(trip_packet_t *p)
 {
     trip_ready(p->router);
+    trip_watch(p->router, TRIP_SOCKET_TIMEOUT, 0);
     reliable_set_timeout(p);
 }
 
@@ -67,17 +71,16 @@ reliable_resolve(trip_packet_t *p, int rkey, size_t ilen, const unsigned char *i
 {
     ilen = ilen;
     info = info;
-#if 0
+#if 1
     reliable_t *rel = p->data;
-    if (NULL == rel->c[0])
+    if (0 == rel->c[0])
     {
-        rel->c[0] = c;
-        c->src = 1;
-        trip_resolve(p->router, c, 0);
+        rel->c[0] = 1;
+        trip_resolve(p->router, rkey, 1, 0, NULL);
     }
     else
     {
-        trip_resolve(p->router, c, EBUSY);
+        trip_resolve(p->router, rkey, 0, EBUSY, NULL);
     }
 #else
     p = p;
@@ -91,6 +94,7 @@ reliable_send(trip_packet_t *p, int src, size_t len, void *buf)
     /* Toggle the src descriptor.
      * Pass the  buffer through to the one other connection.
      */
+    // TODO fill in entry for next thingy shit fuck
     trip_seg(p->router, src ^ 1, len, buf);
     return 0;
 }
@@ -117,8 +121,8 @@ reliable_new(void)
     trip_packet_t *p = malloc(sizeof(trip_packet_t));
 
     reliable_t *rel = malloc(sizeof(reliable_t));
-    rel->c[0] = NULL;
-    rel->c[1] = NULL;
+    rel->c[0] = 0;
+    rel->c[1] = 0;
     rel->alen = 512;
     rel->len = 0;
     rel->buf = malloc(rel->alen);
