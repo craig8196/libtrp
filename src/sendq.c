@@ -50,3 +50,9 @@ sendq_nq(sendq_t *q, _trip_connection_t *c)
     c->next = NULL;
 }
 
+bool
+sendq_has(sendq_t *q)
+{
+    return NULL != q->head;
+}
+

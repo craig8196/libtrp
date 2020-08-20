@@ -109,13 +109,15 @@ struct _trip_router_s
     sendq_t sendq;
     unsigned char *buf;
     size_t buflen;
-    size_t sendlen;
+    size_t sendlen; // set when the buffer has a packet to send
+    int sendsrc;
 
     /* Packet Interface */
     trip_packet_t *packet;
 
     /* Timer Wheel */
     timerwheel_t wheel;
+    uint64_t mindeadline;
 
     /* Encryption */
     unsigned char *openpub;
@@ -129,6 +131,8 @@ struct _trip_router_s
     uint32_t max_in;
     uint32_t max_out;
     uint32_t max_packet_read_count;
+    uint32_t max_packet_write_count;
+    uint32_t max_connection_write_count;
     uint32_t max_connection_send;
     uint32_t max_message_id;
     uint32_t max_streams;
@@ -150,7 +154,9 @@ _trip_set_state(_trip_router_t *r, enum _tripr_state state);
 void
 _trip_qconnection(_trip_router_t *r, _trip_connection_t *c);
 timer_entry_t *
-_trip_timeout(_trip_router_t *r, int ms, void *data, timer_cb_t *cb);
+_trip_set_timeout(_trip_router_t *r, int ms, void *data, timer_cb_t *cb);
+void
+_trip_cancel_timeout(timer_entry_t *e);
 
 #ifdef __cplusplus
 }

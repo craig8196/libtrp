@@ -78,13 +78,24 @@ _trip_fd_events_to_epoll(int events)
 
 /**
  * @return The next timeout for the next call to epoll.
- * TODO this needs to move into the router and the callback needs to be called
  */
 static int
 next_timeout(_trip_router_t *r, int defaulttimeout, uint64_t now)
 {
-    int timeout = timerwheel_get_with(&r->wheel, now);
-    return timeout < defaulttimeout ? timeout : defaulttimeout;
+    if (r->poll->deadline <= now)
+    {
+        r->poll->deadline = TRIPTIME_END;
+        return 0;
+    }
+    else if (r->mindeadline >= (now + 1024))
+    {
+        return 1024;
+    }
+    else
+    {
+        int timeout = (int)(r->poll->deadline - now);
+        return timeout < defaulttimeout ? timeout : defaulttimeout;
+    }
 }
 
 void
@@ -120,6 +131,9 @@ _trip_watch_cb(trip_router_t *_r, int fd, int events, void * UNUSED(data))
 #endif
 }
 
+/**
+ * The framework should always be giving the nearest timeout.
+ */
 void
 _trip_timeout_cb(trip_router_t *_r, long timeout)
 {
@@ -128,6 +142,10 @@ _trip_timeout_cb(trip_router_t *_r, long timeout)
     w->deadline = triptime_deadline(timeout);
 }
 
+/**
+ * Sets the callbacks for the router and initializes
+ * the polling fd.
+ */
 int
 trip_run_init(trip_router_t *_r)
 {
@@ -218,7 +236,7 @@ trip_run(trip_router_t *_r, int timeout)
             else if (0 == nfds)
             {
                 /* Call timeout action. */
-                c = trip_action(_r, TRIP_SOCKET_TIMEOUT, 0);
+                c = trip_timeout(_r);
             }
             else
             {

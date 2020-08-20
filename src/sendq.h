@@ -53,6 +53,8 @@ _trip_connection_t *
 sendq_dq(sendq_t *q);
 void
 sendq_nq(sendq_t *q, _trip_connection_t *c);
+bool
+sendq_has(sendq_t *q);
 
 
 #ifdef __cplusplus

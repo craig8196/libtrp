@@ -266,7 +266,7 @@ _tripc_done_retry(_trip_connection_t *c)
 void
 _tripc_set_timeout(_trip_connection_t *c, int ms, timer_cb_t *cb)
 {
-    c->statetimer = trip_timeout((trip_router_t *)c->router, ms, c, cb);
+    c->statetimer = trip_set_timeout((trip_router_t *)c->router, ms, c, cb);
 }
 
 void
@@ -274,7 +274,7 @@ _tripc_cancel_timeout(_trip_connection_t *c)
 {
     if (c->statetimer)
     {
-        trip_timeout_cancel((triptimer_t *)c->statetimer);
+        _trip_cancel_timeout(c->statetimer);
         c->statetimer = NULL;
     }
 }
@@ -332,7 +332,8 @@ _tripc_send_open(_trip_connection_t *c, size_t blen, void *buf)
         | S | SIGNATURE (OUTSIDE ENCRYPTION) |
 
     */
-    static const char fmt[] = "sCQWHboQQnkIIIIOS";
+    static const char fmt[] = "CQW";
+    //static const char fmt[] = "sCQWHboQQnkIIIIOS";
 
 #if DEBUG_CONNECTION
     printf("%s: packlen(%lu)\n", __func__, trip_pack_len(fmt));
@@ -341,7 +342,7 @@ _tripc_send_open(_trip_connection_t *c, size_t blen, void *buf)
     return trip_pack(blen, buf, fmt,
         (uint8_t)_TRIP_CONTROL_OPEN,
         (uint64_t)0,
-        _tripc_seq(c),
+        _tripc_seq(c)/*,
 
         (uint16_t)TRIP_VERSION_MAJOR,
         (size_t)0,
@@ -356,6 +357,7 @@ _tripc_send_open(_trip_connection_t *c, size_t blen, void *buf)
         (uint32_t)128,
         c->peer.openpk,
         c->peer.sig
+        */
         );
 }
 

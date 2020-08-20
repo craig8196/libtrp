@@ -77,6 +77,7 @@ typedef void trip_handle_timeout_t(trip_router_t *, long);
 typedef struct trip_screen_s
 {
     bool allow;
+    // TODO more features coming...
 } trip_screen_t;
 
 typedef void trip_handle_screen_t(trip_screen_t *);
@@ -127,6 +128,8 @@ trip_setopt(trip_router_t *r, enum trip_router_opt opt, ...);
 const char *
 trip_errmsg(trip_router_t *_r);
 
+int
+trip_timeout(trip_router_t *);
 int
 trip_action(trip_router_t *, trip_socket_t, int);
 void

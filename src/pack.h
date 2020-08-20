@@ -23,6 +23,33 @@
  * @file pack.h
  * @author Craig Jacobson
  * @brief Packing and unpacking utilities.
+ *
+ * Pack/unpack data according to format.
+ *   b: Binary string (size_t, void *).
+ *   o: Encrypt open start.
+ *   O: Encrypt open end.
+ *   e: Encrypt start.
+ *   E: Encrypt end.
+ *   g: Signature start.
+ *   G: Signature end.
+ *
+ *   c: Signed octet.
+ *   C: Unsigned octet.
+ *   h: Signed 16-bit int.
+ *   H: Unsigned 16-bit int.
+ *   i: Signed 32-bit int.
+ *   I: Unsigned 32-bit int.
+ *   q: Signed 64-bit int.
+ *   Q: Unsigned 64-bit int.
+ *
+ *   p: Pointer save. Unpack only.
+ *   s: Skip. Unpack only.
+ *   V: Unsigned variable int from 32-bit on pack. To 32-bit on unpack.
+ *   W: Unsigned variable int from 64-bit on pack. To 64-bit on unpack.
+ *
+ *   n: Nonce.
+ *   k: Public key (box/seal).
+ *
  */
 #ifndef _LIBTRP_PACK_H_
 #define _LIBTRP_PACK_H_

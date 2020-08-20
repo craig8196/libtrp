@@ -35,16 +35,16 @@ timerwheel_destroy(timerwheel_t *tw)
     tw->head = NULL;
 }
 
-int
-timerwheel_get(timerwheel_t *tw)
+timer_entry_t *
+timerwheel_walk(timerwheel_t *tw)
 {
-    return timerwheel_get_with(tw, triptime_now());
+    return timerwheel_walk_with(tw, triptime_now());
 }
 
-int
-timerwheel_get_with(timerwheel_t *tw, uint64_t now)
+timer_entry_t *
+timerwheel_walk_with(timerwheel_t *tw, uint64_t now)
 {
-    int timeout = 1024;
+    timer_entry_t *min = NULL;
     timer_entry_t **prev = &tw->head;
     timer_entry_t *curr = tw->head;
     timer_entry_t *next = NULL;
@@ -71,18 +71,24 @@ timerwheel_get_with(timerwheel_t *tw, uint64_t now)
         }
         else
         {
-            /* Skip. */
-            int tmptimeout = triptime_timeout(curr->deadline, now);
-            if (tmptimeout < timeout)
+            /* See if minimal. */
+            if (min)
             {
-                timeout = tmptimeout;
+                if (curr->deadline < min->deadline)
+                {
+                    min = curr;
+                }
+            }
+            else
+            {
+                min = curr;
             }
             prev = &curr->next;
         }
         curr = next;
     }
 
-    return timeout;
+    return min;
 }
 
 timer_entry_t *

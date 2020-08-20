@@ -173,7 +173,7 @@ _trip_udp_bind(trip_packet_t *packet)
     }
 }
 
-// TODO create resolve, send, read, wait??
+// TODO create resolve, send, read??
 
 static void
 _trip_udp_unbind(trip_packet_t *packet)
@@ -280,7 +280,6 @@ trip_packet_new_udp(const char *_info)
         p->send = NULL;
         p->read = NULL;
         p->unbind = _trip_udp_unbind;
-        p->wait = NULL;
         p->router = NULL;
     } while (0);
 

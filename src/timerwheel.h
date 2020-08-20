@@ -57,10 +57,10 @@ void
 timerwheel_init(timerwheel_t *tw);
 void
 timerwheel_destroy(timerwheel_t *tw);
-int
-timerwheel_get(timerwheel_t *tw);
-int
-timerwheel_get_with(timerwheel_t *tw, uint64_t now);
+timer_entry_t *
+timerwheel_walk(timerwheel_t *tw);
+timer_entry_t *
+timerwheel_walk_with(timerwheel_t *tw, uint64_t now);
 timer_entry_t *
 timerwheel_add(timerwheel_t *tw, int timeout, void *data, timer_cb_t *cb);
 void

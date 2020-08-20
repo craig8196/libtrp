@@ -6,6 +6,10 @@
 
 #include "libtrp.h"
 
+#define DEBUG_RPACKET (1)
+#ifdef DEBUG_RPACKET
+#include <stdio.h>
+#endif
 
 #ifdef UNUSED
 #elif defined(__GNUC__)
@@ -46,14 +50,14 @@ void
 reliable_set_timeout(trip_packet_t *p)
 {
     reliable_t *r = p->data;
-    r->timer = trip_timeout(p->router, 50, (void *)p, reliable_timeout_cb);
+    r->timer = trip_set_timeout(p->router, 50, (void *)p, reliable_timeout_cb);
 }
 
 static void
 reliable_bind(trip_packet_t *p)
 {
     trip_ready(p->router);
-    trip_watch(p->router, TRIP_SOCKET_TIMEOUT, 0);
+    trip_watch(p->router, TRIP_SOCKET_TIMEOUT, TRIP_INOUT);
     reliable_set_timeout(p);
 }
 
@@ -61,7 +65,7 @@ static void
 reliable_unbind(trip_packet_t *p)
 {
     reliable_t *r = p->data;
-    trip_timeout_cancel(r->timer);
+    trip_cancel_timeout(r->timer);
     r->timer = NULL;
     trip_unready(p->router, 0);
 }
@@ -95,6 +99,9 @@ reliable_send(trip_packet_t *p, int src, size_t len, void *buf)
      * Pass the  buffer through to the one other connection.
      */
     // TODO fill in entry for next thingy shit fuck
+#ifdef DEBUG_RPACKET
+    printf("is null??????? %d\n", (int)(p->router == NULL));
+#endif
     trip_seg(p->router, src ^ 1, len, buf);
     return 0;
 }
@@ -108,11 +115,13 @@ reliable_read(trip_packet_t * UNUSED(p), trip_socket_t UNUSED(s), int UNUSED(max
     return 0;
 }
 
+#if 0
 static int
 reliable_wait(trip_packet_t * UNUSED(p))
 {
     return 1;
 }
+#endif
 
 
 trip_packet_t *
@@ -134,7 +143,6 @@ reliable_new(void)
     p->send = &reliable_send;
     p->read = &reliable_read;
     p->unbind = &reliable_unbind;
-    p->wait = &reliable_wait;
 
     return p;
 }
