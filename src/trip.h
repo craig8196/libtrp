@@ -23,6 +23,8 @@
  * @file trip.h
  * @author Craig Jacobson
  * @brief Router internals and core interface implementation to library.
+ *
+ * TODO change zones to be called rivers
  */
 #ifndef _LIBTRP_ROUTER_H_
 #define _LIBTRP_ROUTER_H_
@@ -71,6 +73,13 @@ enum _tripr_state
 #define _TRIPR_DEFAULT_MAX_CONN (1 << 19)
 #define _TRIPR_DEFAULT_MAX_STREAM (8)
 
+// TODO fix this, we should update zones when we get to large offset
+// TODO deprecated already...
+#define _TRIPR_MAX_MESSAGE_ID (1 << 20)
+#define _TRIPR_MAX_TIMEOUT (1024)
+
+
+
 struct _trip_router_s
 {
     /* Frequently Accessed */
@@ -89,7 +98,7 @@ struct _trip_router_s
 
     /* State */
     enum _tripr_state state;
-    uint64_t statedeadline;
+    uint64_t statedeadline;// TODO I think this is useless because of the timerwheel
     timer_entry_t *statetimer;
 
     /* Error Handling */
@@ -131,10 +140,8 @@ struct _trip_router_s
     uint32_t max_in;
     uint32_t max_out;
     uint32_t max_packet_read_count;
-    uint32_t max_packet_write_count;
-    uint32_t max_connection_write_count;
-    uint32_t max_connection_send;
-    uint32_t max_message_id;
+    uint32_t max_packet_send_count;
+    uint32_t max_connection_send_count;
     uint32_t max_streams;
 
     // TODO move to own struct
@@ -153,6 +160,8 @@ void
 _trip_set_state(_trip_router_t *r, enum _tripr_state state);
 void
 _trip_qconnection(_trip_router_t *r, _trip_connection_t *c);
+void
+_trip_unqconnection(_trip_router_t *r, _trip_connection_t *c);
 timer_entry_t *
 _trip_set_timeout(_trip_router_t *r, int ms, void *data, timer_cb_t *cb);
 void

@@ -112,7 +112,7 @@ reliable_read(trip_packet_t * UNUSED(p), trip_socket_t UNUSED(s), int UNUSED(max
     /* Since we pass the buffer directly to the other connection
      * we don't ever have to read.
      */
-    return 0;
+    return EWOULDBLOCK;
 }
 
 #if 0

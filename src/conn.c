@@ -117,7 +117,8 @@ _tripc_next_message_id(_trip_connection_t *c)
     uint32_t id = c->msg.nextmsgid;
     ++c->msg.nextmsgid;
 
-    if (c->msg.nextmsgid > c->router->max_message_id)
+    // TODO change zone update to be zone/river offset
+    if (c->msg.nextmsgid > _TRIPR_MAX_MESSAGE_ID)
     {
         _tripc_update_zones(c);
     }
@@ -625,6 +626,17 @@ void
 _tripc_destroy(_trip_connection_t *c)
 {
     streammap_destroy(&c->streams);
+
+    if (c->statetimer)
+    {
+        _trip_cancel_timeout(c->statetimer);
+        c->statetimer = NULL;
+    }
+
+    if (c->insend)
+    {
+        _trip_unqconnection(c->router, c);
+    }
 
     tripm_cfree(c->errmsg);
     c->errmsg = NULL;

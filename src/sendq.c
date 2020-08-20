@@ -12,8 +12,9 @@ sendq_init(sendq_t *q)
 }
 
 void
-sendq_destroy(sendq_t * UNUSED(q))
+sendq_destroy(sendq_t * q)
 {
+    sendq_init(q);
 }
 
 _trip_connection_t *
@@ -29,6 +30,7 @@ sendq_dq(sendq_t *q)
             q->tail = NULL;
         }
         c->next = NULL;
+        c->insend = false;
     }
 
     return c;
@@ -37,6 +39,11 @@ sendq_dq(sendq_t *q)
 void
 sendq_nq(sendq_t *q, _trip_connection_t *c)
 {
+    if (c->insend)
+    {
+        return;
+    }
+
     if (q->tail)
     {
         q->tail->next = c;
@@ -48,6 +55,30 @@ sendq_nq(sendq_t *q, _trip_connection_t *c)
         q->tail = c;
     }
     c->next = NULL;
+    c->insend = true;
+}
+
+void
+sendq_del(sendq_t *q, _trip_connection_t *c)
+{
+    if (c->insend)
+    {
+        _trip_connection_t **p = &q->head;
+        _trip_connection_t *n = q->head;
+        while (n)
+        {
+            if (n == c)
+            {
+                /* Unlink connection. */
+                *p = n->next;
+                break;
+            }
+
+            p = &n->next;
+            n = n->next;
+        }
+    }
+    c->insend = false;
 }
 
 bool

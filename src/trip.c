@@ -113,6 +113,12 @@ _trip_qconnection(_trip_router_t *r, _trip_connection_t *c)
 }
 
 void
+_trip_unqconnection(_trip_router_t *r, _trip_connection_t *c)
+{
+    sendq_del(&r->sendq, c);
+}
+
+void
 _trip_set_error(_trip_router_t *r, int eval, const char *msg)
 {
     /* Prevent multiple calls. */
@@ -143,7 +149,22 @@ _trip_timeout_router_cb(void *_r)
 #endif
 
     r->statetimer = NULL;
-    _trip_set_error(r, ETIME, NULL);
+
+    // TODO should I cleanup the packet stuff now???
+
+    switch (r->state)
+    {
+        case _TRIPR_STATE_ERROR:
+            {
+                /* Do nothing. */
+            }
+            break;
+        default:
+            {
+                _trip_set_error(r, ETIME, NULL);
+            }
+            break;
+    }
 }
 
 /**
@@ -155,7 +176,7 @@ _trip_set_timeout(_trip_router_t *r, int ms, void *data, timer_cb_t *cb)
 {
     timer_entry_t *e = timerwheel_add(&r->wheel, ms, data, cb);
 
-    if (NULL != e)
+    if (e)
     {
         if (e->deadline < r->mindeadline)
         {
@@ -269,7 +290,7 @@ _trip_listen(_trip_router_t *r, trip_socket_t fd, int events)
         {
             bool re_q = true;
             uint32_t connsent = 0;
-            for (; connsent < r->max_connection_write_count; ++connsent, ++sent)
+            for (; connsent < r->max_connection_send_count; ++connsent, ++sent)
             {
                 r->sendlen = _tripc_send(c, r->buflen, r->buf);
 
@@ -289,14 +310,17 @@ _trip_listen(_trip_router_t *r, trip_socket_t fd, int events)
                         if (EWOULDBLOCK != wcode && EAGAIN != wcode)
                         {
                             _trip_set_error(r, wcode, NULL);
-                            return;
                         }
-                        /* Packet not sent and we would block. */
-                        r->sendsrc = c->src;
+                        else
+                        {
+                            /* Packet not sent and we would block. */
+                            r->sendsrc = c->src;
+                        }
+                        return;
                     }
                     else
                     {
-                        /* Packet was sent. */
+                        /* Packet was sent. Ready for next connection. */
                         r->sendlen = 0;
                     }
                 }
@@ -313,7 +337,7 @@ _trip_listen(_trip_router_t *r, trip_socket_t fd, int events)
                 sendq_nq(&r->sendq, c);
             }
 
-            if (sent > r->max_packet_write_count)
+            if (sent > r->max_packet_send_count)
             {
                 break;
             }
@@ -676,8 +700,9 @@ _trip_set_state(_trip_router_t *r, enum _tripr_state state)
                  * cleaned up by this point.
                  * The exception being unbinding.
                  */
-                if (NULL != r->packet->router)
+                if (NULL != r->packet->router && NULL == r->statetimer)
                 {
+                    r->statetimer = _trip_set_timeout(r, r->timeout_unbind, r, _trip_timeout_router_cb);
                     r->packet->unbind(r->packet);
                 }
             }
@@ -826,6 +851,7 @@ trip_unready(trip_router_t *_r, int err)
     }
     else
     {
+        // TODO should this be asynchronous??
         _trip_set_state(r, _TRIPR_STATE_END);
     }
 }
@@ -904,10 +930,15 @@ trip_new(enum trip_preset preset)
         r->max_conn = _TRIPR_DEFAULT_MAX_CONN;
         r->max_in = r->max_conn;
         r->max_out = r->max_conn;
+        r->max_packet_read_count = 1024;
+        r->max_packet_send_count = 1024;
+        r->max_connection_send_count = 128;
         r->max_streams = _TRIPR_DEFAULT_MAX_STREAM;
         r->flag = _TRIPR_FLAG_ALLOW_IN | _TRIPR_FLAG_ALLOW_OUT;
         r->buflen = 1200;
         r->buf = tripm_alloc(r->buflen);
+
+        r->mindeadline = TRIPTIME_END;
 
         /* Modify values according to preset. */
         switch (preset)
@@ -1039,7 +1070,8 @@ trip_timeout(trip_router_t *_r)
     trip_torouter(r, _r);
 
     /* First handle timeouts. */
-    timer_entry_t *e = timerwheel_walk(&r->wheel);
+    uint64_t now = triptime_now();
+    timer_entry_t *e = timerwheel_walk_with(&r->wheel, now);
 
     if (e)
     {
@@ -1049,6 +1081,18 @@ trip_timeout(trip_router_t *_r)
     {
         r->mindeadline = TRIPTIME_END;
     }
+
+    int ms;
+    if (r->mindeadline > (now + _TRIPR_MAX_TIMEOUT))
+    {
+        ms = _TRIPR_MAX_TIMEOUT;
+    }
+    else
+    {
+        ms = (int)(r->mindeadline - now);
+    }
+
+    r->timeout((trip_router_t *)r, (long)ms);
 
     return r->error;
 }
@@ -1063,6 +1107,10 @@ trip_timeout(trip_router_t *_r)
 int
 trip_action(trip_router_t *_r, trip_socket_t fd, int events)
 {
+#if DEBUG_ROUTER
+    printf("%s\n", __func__);
+#endif
+
     _trip_router_t *r = (_trip_router_t *)_r;
 
     if (TRIP_SOCKET_TIMEOUT == fd)
@@ -1070,7 +1118,10 @@ trip_action(trip_router_t *_r, trip_socket_t fd, int events)
         // TODO this is clunky... find better way
         // TODO this was a shim to convert from previous way.
         // probably should rely more heavily on the set_state system more
-        trip_timeout(_r);
+        if (trip_timeout(_r))
+        {
+            return r->error;
+        }
     }
 
     switch (r->state)

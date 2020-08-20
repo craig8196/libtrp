@@ -80,21 +80,38 @@ _trip_fd_events_to_epoll(int events)
  * @return The next timeout for the next call to epoll.
  */
 static int
-next_timeout(_trip_router_t *r, int defaulttimeout, uint64_t now)
+next_timeout(_trip_poll_t *poll, uint64_t deadline, uint64_t now)
 {
-    if (r->poll->deadline <= now)
+    if (deadline < poll->deadline)
     {
-        r->poll->deadline = TRIPTIME_END;
-        return 0;
-    }
-    else if (r->mindeadline >= (now + 1024))
-    {
-        return 1024;
+        if (deadline <= now)
+        {
+            return 0;
+        }
+        else if (deadline >= (now + _TRIPR_MAX_TIMEOUT))
+        {
+            return _TRIPR_MAX_TIMEOUT;
+        }
+        else
+        {
+            return (int)(deadline - now);
+        }
     }
     else
     {
-        int timeout = (int)(r->poll->deadline - now);
-        return timeout < defaulttimeout ? timeout : defaulttimeout;
+        if (poll->deadline <= now)
+        {
+            poll->deadline = TRIPTIME_END;
+            return 0;
+        }
+        else if (poll->deadline >= (now + _TRIPR_MAX_TIMEOUT))
+        {
+            return _TRIPR_MAX_TIMEOUT;
+        }
+        else
+        {
+            return (int)(poll->deadline - now);
+        }
     }
 }
 
@@ -215,14 +232,15 @@ trip_run(trip_router_t *_r, int timeout)
         /* Save the timeout from the user as a deadline. */
         uint64_t now = triptime_now();
         uint64_t deadline = timeout < 0 ? TRIPTIME_END : triptime_deadline(timeout);
-        timeout = TRIPTIME_END == deadline ? 1024 : timeout;
-        timeout = next_timeout(r, timeout, now);
-#if DEBUG_TRIPPOLL
-        printf("Next timeout: %d\n", timeout);
-#endif
+        timeout = next_timeout(r->poll, deadline, now);
         
         for (;;)
         {
+#if DEBUG_TRIPPOLL
+            printf("%s: epoll timeout(%d)\n", __func__, timeout);
+            printf("%s: deadline - now: %lu - %lu = %d\n", __func__, deadline, now, (int)(deadline - now));
+            printf("%s: poll->deadline - now: %lu - %lu = %d\n", __func__, r->poll->deadline, now, (int)(r->poll->deadline - now));
+#endif
             /* Call epoll. */
             struct epoll_event eventlist[_TRIP_MAX_EVENTS];
             int nfds = epoll_wait(w->efd, eventlist, _TRIP_MAX_EVENTS, timeout);
@@ -282,8 +300,7 @@ trip_run(trip_router_t *_r, int timeout)
             }
 
             /* Resolve next timeout. */
-            timeout = TRIPTIME_END == deadline ? 1024 : triptime_timeout(deadline, now);
-            timeout = next_timeout(r, timeout, now);
+            timeout = next_timeout(r->poll, deadline, now);
         }
     } while (false);
 
