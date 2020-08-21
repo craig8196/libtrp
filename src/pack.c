@@ -244,7 +244,7 @@ trip_pack_len(const char *format)
 }
 
 static int
-_trip_uvar_len(uint32_t n)
+_trip_uvar_len(uint64_t n)
 {
     // TODO this could be attack vector, limit loop
     int len = 0;
@@ -283,6 +283,8 @@ trip_pack(size_t cap, unsigned char *buf, const char *format, ...)
 	unsigned long long int Q;
 
     /* Buffers */
+    size_t tlen;
+    size_t rlen;
     unsigned char *raw = NULL;
 
 	size_t size = 0;
@@ -293,6 +295,29 @@ trip_pack(size_t cap, unsigned char *buf, const char *format, ...)
     {
 		switch (*format)
         {
+            case 'b':
+                rlen = va_arg(ap, size_t);
+                raw = va_arg(ap, unsigned char *);
+                i = _trip_uvar_len(rlen);
+                size += i + 1 + rlen;
+                if (size > cap)
+                {
+                    size = NPOS;
+                    goto _trip_pack_end;
+                }
+                *buf = i;
+                ++buf;
+                tlen = rlen;
+                for (; i; --i, tlen = tlen >> 8, ++buf)
+                {
+                    *buf = ((size_t)0x000000FF & tlen);
+                }
+                if (rlen)
+                {
+                    memcpy(buf, raw, rlen);
+                    buf += rlen;
+                }
+                break;
             case 'c':
                 size += 1;
                 if (size > cap)
@@ -403,15 +428,15 @@ trip_pack(size_t cap, unsigned char *buf, const char *format, ...)
                 }
                 *buf = i;
                 ++buf;
-                for (; i < 5; ++i, I = I >> 8, ++buf)
+                for (; i; --i, I = I >> 8, ++buf)
                 {
                     *buf = (0x000000FF & I);
                 }
                 break;
 
             case 'W':
-                I = va_arg(ap, unsigned long long int);
-                i = _trip_uvar_len(I);
+                Q = va_arg(ap, unsigned long long int);
+                i = _trip_uvar_len(Q);
                 size += i + 1;
                 if (size > cap)
                 {
@@ -420,9 +445,9 @@ trip_pack(size_t cap, unsigned char *buf, const char *format, ...)
                 }
                 *buf = i;
                 ++buf;
-                for (; i < 9; ++i, I = I >> 8, ++buf)
+                for (; i; --i, Q = Q >> 8, ++buf)
                 {
-                    *buf = (0x000000FF & I);
+                    *buf = (0x00000000000000FF & Q);
                 }
                 break;
 
@@ -675,5 +700,22 @@ trip_unpack(size_t blen, unsigned char *buf, const char *format, ...)
 	va_end(ap);
 
     return len;
+}
+
+void
+trip_dump(size_t blen, const unsigned char *buf)
+{
+    size_t i;
+    for (i = 0; i < blen; ++i)
+    {
+        if (i)
+        {
+            printf(".%x", buf[i]);
+        }
+        else
+        {
+            printf("%x", buf[i]);
+        }
+    }
 }
 

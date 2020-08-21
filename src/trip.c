@@ -98,13 +98,17 @@ _trip_send_immediately_cb(void *_r)
     _trip_listen(r, TRIP_SOCKET_TIMEOUT, TRIP_INOUT);
     if (_trip_has_send(r))
     {
-        _trip_set_timeout(r, 0, r, _trip_send_immediately_cb);
+        _trip_set_timeout(r, 1, r, _trip_send_immediately_cb);
     }
 }
 
 void
 _trip_qconnection(_trip_router_t *r, _trip_connection_t *c)
 {
+#if DEBUG_ROUTER
+    printf("%s\n", __func__);
+#endif
+
     sendq_nq(&r->sendq, c);
     if (r->flag | _TRIPR_FLAG_ALWAYS_READY)
     {
@@ -241,6 +245,9 @@ trip_cancel_timeout(triptimer_t *t)
 void
 _trip_listen(_trip_router_t *r, trip_socket_t fd, int events)
 {
+#if DEBUG_ROUTER
+    printf("%s: events(%d)\n", __func__, events);
+#endif
 
     /* Let the packet interface read. */
     if (TRIP_IN & events)
@@ -260,13 +267,20 @@ _trip_listen(_trip_router_t *r, trip_socket_t fd, int events)
 
     if (TRIP_OUT & events)
     {
+#if DEBUG_ROUTER
+    printf("%s: start connection send\n", __func__);
+#endif
         uint32_t sent = 0;
         trip_packet_t *p = r->packet;
 
         /* Resend previous attempted packet. */
         if (r->sendlen)
         {
-            int wcode = p->send(p->data, r->sendsrc, r->sendlen, r->buf);
+#if DEBUG_ROUTER
+    printf("%s: retry send\n", __func__);
+#endif
+
+            int wcode = p->send(p, r->sendsrc, r->sendlen, r->buf);
 
             if (wcode)
             {
@@ -288,6 +302,10 @@ _trip_listen(_trip_router_t *r, trip_socket_t fd, int events)
         _trip_connection_t *c = sendq_dq(&r->sendq);
         while (c)
         {
+#if DEBUG_ROUTER
+            printf("%s: send from connection\n", __func__);
+#endif
+
             bool re_q = true;
             uint32_t connsent = 0;
             for (; connsent < r->max_connection_send_count; ++connsent, ++sent)
@@ -303,7 +321,7 @@ _trip_listen(_trip_router_t *r, trip_socket_t fd, int events)
                 }
                 else if (r->sendlen)
                 {
-                    int wcode = p->send(p->data, c->src, r->sendlen, r->buf);
+                    int wcode = p->send(p, c->src, r->sendlen, r->buf);
 
                     if (wcode)
                     {
@@ -819,6 +837,11 @@ trip_resolve(trip_router_t *_r, int rkey, int src, int err, const char *emsg)
 void
 trip_watch(trip_router_t *_r, trip_socket_t fd, int events)
 {
+    // TODO check if there are connections in the q and set appropriately
+#if DEBUG_ROUTER
+    printf("%s\n", __func__);
+#endif
+
     trip_torouter(r, _r);
 
     if (TRIP_SOCKET_TIMEOUT == fd)
@@ -830,7 +853,10 @@ trip_watch(trip_router_t *_r, trip_socket_t fd, int events)
         else
         {
             r->flag |= _TRIPR_FLAG_ALWAYS_READY;
-            _trip_set_timeout(r, 0, r, _trip_send_immediately_cb);
+            if (sendq_has(&r->sendq))
+            {
+                _trip_set_timeout(r, 0, r, _trip_send_immediately_cb);
+            }
         }
     }
     else
@@ -935,8 +961,11 @@ trip_new(enum trip_preset preset)
         r->max_connection_send_count = 128;
         r->max_streams = _TRIPR_DEFAULT_MAX_STREAM;
         r->flag = _TRIPR_FLAG_ALLOW_IN | _TRIPR_FLAG_ALLOW_OUT;
+
         r->buflen = 1200;
         r->buf = tripm_alloc(r->buflen);
+        r->sendlen = 0;
+        r->sendsrc = 0;
 
         r->mindeadline = TRIPTIME_END;
 
@@ -1388,7 +1417,7 @@ _trip_open_connection_async_cb(void *_c)
  * @param ilen - The length of the information (see packet documentation).
  * @param info - The information to specify where to connect to
  *               (see packet documentation).
- * TODO free connection using free connection and destroy connections functions
+ * TODO there is a race condition where the router may not be bound when opening!!!
  */
 void
 trip_open_connection(trip_router_t *_r, void *data, size_t ilen,

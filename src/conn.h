@@ -110,6 +110,7 @@ struct _trip_connection_s
      * Re-used to link unused connection structs.
      */
     bool insend;
+    bool hassend;
     _trip_connection_t *next;
 
     /* Stream Map */

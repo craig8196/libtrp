@@ -78,6 +78,8 @@ _trip_fd_events_to_epoll(int events)
 
 /**
  * @return The next timeout for the next call to epoll.
+ *
+ * TODO there must be a better way... so many ifs...
  */
 static int
 next_timeout(_trip_poll_t *poll, uint64_t deadline, uint64_t now)
@@ -238,8 +240,6 @@ trip_run(trip_router_t *_r, int timeout)
         {
 #if DEBUG_TRIPPOLL
             printf("%s: epoll timeout(%d)\n", __func__, timeout);
-            printf("%s: deadline - now: %lu - %lu = %d\n", __func__, deadline, now, (int)(deadline - now));
-            printf("%s: poll->deadline - now: %lu - %lu = %d\n", __func__, r->poll->deadline, now, (int)(r->poll->deadline - now));
 #endif
             /* Call epoll. */
             struct epoll_event eventlist[_TRIP_MAX_EVENTS];

@@ -45,7 +45,9 @@
  *   p: Pointer save. Unpack only.
  *   s: Skip. Unpack only.
  *   V: Unsigned variable int from 32-bit on pack. To 32-bit on unpack.
+ *      First byte indicates number of following bytes.
  *   W: Unsigned variable int from 64-bit on pack. To 64-bit on unpack.
+ *      First byte indicates number of following bytes.
  *
  *   n: Nonce.
  *   k: Public key (box/seal).
@@ -69,6 +71,9 @@ trip_pack(size_t cap, unsigned char *buf, const char *format, ...);
 
 size_t
 trip_unpack(size_t blen, const unsigned char *buf, const char *format, ...);
+
+void
+trip_dump(size_t blen, const unsigned char *buf);
 
 
 #ifdef __cplusplus

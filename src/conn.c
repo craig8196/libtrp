@@ -283,17 +283,21 @@ _tripc_cancel_timeout(_trip_connection_t *c)
 void
 _tripc_set_send(_trip_connection_t *c)
 {
-    if (!c->insend)
-    {
-        _trip_qconnection(c->router, c);
-        c->insend = true;
-    }
+    _trip_qconnection(c->router, c);
+    c->hassend = true;
+}
+
+void
+_tripc_clear_send(_trip_connection_t *c)
+{
+    _trip_unqconnection(c->router, c);
+    c->hassend = false;
 }
 
 uint64_t
 _tripc_seq(_trip_connection_t *c)
 {
-    return c->self.sequence;
+    return c->self.sequence++;
 }
 
 size_t
@@ -333,21 +337,26 @@ _tripc_send_open(_trip_connection_t *c, size_t blen, void *buf)
         | S | SIGNATURE (OUTSIDE ENCRYPTION) |
 
     */
-    static const char fmt[] = "CQW";
+    static const char fmt[] = "sCQWHboQnkIIIIOS";
     //static const char fmt[] = "sCQWHboQQnkIIIIOS";
 
 #if DEBUG_CONNECTION
     printf("%s: packlen(%lu)\n", __func__, trip_pack_len(fmt));
 #endif
 
-    return trip_pack(blen, buf, fmt,
+    size_t len = trip_pack(blen, buf, fmt,
+            //TODO finish encryption and basic data
+        c->self.sig,
+
         (uint8_t)_TRIP_CONTROL_OPEN,
         (uint64_t)0,
-        _tripc_seq(c)/*,
+        _tripc_seq(c),
 
         (uint16_t)TRIP_VERSION_MAJOR,
         (size_t)0,
-        (void *)NULL,
+        (unsigned char *)NULL,
+
+        c->peer.openpk,
 
         c->self.id,
         c->self.nonce,
@@ -355,11 +364,15 @@ _tripc_send_open(_trip_connection_t *c, size_t blen, void *buf)
         (uint32_t)128000,
         (uint32_t)8,
         (uint32_t)65536,
-        (uint32_t)128,
-        c->peer.openpk,
-        c->peer.sig
-        */
+        (uint32_t)128
         );
+#if DEBUG_CONNECTION
+    printf("OPEN:\n");
+    trip_dump(len, buf);
+    printf("\n");
+#endif
+
+    return len;
 }
 
 size_t
@@ -541,9 +554,16 @@ _tripc_read(_trip_connection_t *c, unsigned char control, size_t len, const unsi
     return c->error;
 }
 
+/**
+ * @return Zero on finish; NPOS or >len on error; otherwise number of bytes written.
+ */
 size_t
 _tripc_send(_trip_connection_t *c, size_t len, void *buf)
 {
+#if DEBUG_CONNECTION
+    printf("%s: state(%s)\n", __func__, _tripc_state_str(c->state));
+#endif
+
     switch (c->state)
     {
         case _TRIPC_STATE_START:
@@ -560,9 +580,18 @@ _tripc_send(_trip_connection_t *c, size_t len, void *buf)
             break;
         case _TRIPC_STATE_OPEN:
             {
-                size_t wlen = _tripc_send_open(c, len, buf);
-                printf("len pack: %lu\n", wlen);
-                return wlen;
+                if (c->hassend)
+                {
+                    size_t wlen = _tripc_send_open(c, len, buf);
+                    printf("len pack: %lu\n", wlen);
+                    c->hassend = false;
+                    return wlen;
+                }
+                else
+                {
+                    /* The timeout is set so we don't need to send again yet. */
+                    return 0;
+                }
             }
             break;
         case _TRIPC_STATE_CHAL:
@@ -617,6 +646,8 @@ _tripc_init(_trip_connection_t *c, _trip_router_t *r, bool incoming)
     c->incoming = incoming;
     streammap_init(&c->streams, r->max_streams);
     c->maxresolve = 500;
+    c->maxstatems = 3000;
+    c->statems = 100;
 }
 
 /**
