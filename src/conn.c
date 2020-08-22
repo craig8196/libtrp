@@ -344,11 +344,10 @@ _tripc_send_open(_trip_connection_t *c, size_t blen, void *buf)
     printf("%s: packlen(%lu)\n", __func__, trip_pack_len(fmt));
 #endif
 
-    size_t len = trip_pack(blen, buf, fmt,
-            //TODO finish encryption and basic data
-        c->self.sig,
+    uint8_t eflag = c->peer.openpk ? _TRIP_PREFIX_EMASK : 0;
 
-        (uint8_t)_TRIP_CONTROL_OPEN,
+    size_t len = trip_pack(blen, buf, fmt,
+        (uint8_t)(_TRIP_CONTROL_OPEN | eflag),
         (uint64_t)0,
         _tripc_seq(c),
 
@@ -364,7 +363,9 @@ _tripc_send_open(_trip_connection_t *c, size_t blen, void *buf)
         (uint32_t)128000,
         (uint32_t)8,
         (uint32_t)65536,
-        (uint32_t)128
+        (uint32_t)128,
+
+        c->self.sig
         );
 #if DEBUG_CONNECTION
     printf("OPEN:\n");

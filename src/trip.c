@@ -439,6 +439,10 @@ _trip_decrypt(_trip_router_t *r, size_t len, unsigned char *buf)
 static void
 _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
 {
+#if DEBUG_ROUTER
+    printf("%s: buffer len(%lu)\n", __func__, len);
+#endif
+
     /* Discard too short segments immediately. */
     if (len < 16) // TODO calculate the exact min length of a packet
     {
@@ -749,6 +753,7 @@ trip_ready(trip_router_t *_r)
 {
     trip_torouter(r, _r);
 
+    // TODO make this async?
     if (_TRIPR_STATE_BIND == r->state)
     {
         _trip_set_state(r, _TRIPR_STATE_LISTEN);
@@ -1352,6 +1357,8 @@ _trip_stop_async_cb(void *_r)
  * -Packet interfaces are assumed dead after timeout, router ref is NULL'd.
  *
  * @return Zero on success; errno if in invalid state.
+ *
+ * TODO move to async? delay by zero seconds?
  */
 int
 trip_stop(trip_router_t *_r)

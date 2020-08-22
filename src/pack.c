@@ -37,6 +37,7 @@
 #include "util.h"
 
 #define TRIPPACK_MAX_VAR (sizeof(uint32_t))
+#define TRIPPACK_MAX_DVAR (sizeof(uint64_t))
 
 
 /**
@@ -205,36 +206,56 @@ trip_pack_len(const char *format)
     {
         switch (*format)
         {
+            case 'o':
+                len += crypto_box_SEALBYTES;
+                break;
+
+            case 'e':
+                len += crypto_box_MACBYTES;
+                break;
+
+            case 's':
+                len += crypto_sign_BYTES;
+                break;
+
+            case 'n':
+                len += crypto_box_NONCEBYTES;
+                break;
+
+            case 'k':
+                len += crypto_box_PUBLICKEYBYTES;
+                break;
+
             case 'c':
             case 'C':
                 ++len;
                 break;
+
             case 'h':
             case 'H':
                 len += 2;
                 break;
+
             case 'i':
             case 'I':
                 len += 4;
                 break;
+
             case 'q':
             case 'Q':
                 len += 8;
                 break;
-            case 'p':
-                break;
-            case 's':
-                break;
+
             case 'V':
                 /* Max supported by platform implementation. */
                 len += 1 + TRIPPACK_MAX_VAR;
                 break;
-            case 'n':
-                len += _TRIP_NONCE;
+
+            case 'W':
+                /* Max supported by platform implementation. */
+                len += 1 + TRIPPACK_MAX_DVAR;
                 break;
-            case 'k':
-                len += TRIP_KEY_PUB;
-                break;
+
             default:
                 break;
         }
@@ -287,6 +308,14 @@ trip_pack(size_t cap, unsigned char *buf, const char *format, ...)
     size_t rlen;
     unsigned char *raw = NULL;
 
+    /* Encryption/Signatures */
+    unsigned char *sigstart = buf;
+    unsigned char *cryptstart = buf;
+    unsigned char *sigkey = buf;
+    unsigned char *key = NULL;
+    unsigned char *nonce = NULL;
+
+    /* Start Packing */
 	size_t size = 0;
 
 	va_start(ap, format);
@@ -295,6 +324,107 @@ trip_pack(size_t cap, unsigned char *buf, const char *format, ...)
     {
 		switch (*format)
         {
+            case 'o':
+                size += crypto_box_SEALBYTES;
+                if (size > cap)
+                {
+                    size = NPOS;
+                    goto _trip_pack_end;
+                }
+                cryptstart = buf;
+                key = va_arg(ap, unsigned char *);
+                buf += crypto_box_SEALBYTES;
+                break;
+
+            case 'O':
+                if (key)
+                {
+                    /* TODO so I don't see documentation allowing
+                     * the input/output buffer to overlap for
+                     * sealed boxes....
+                     * TODO use malloc as shim
+                     * TODO maybe switch to some kind of custom scheme?
+                     */
+                    memset(cryptstart, 0, crypto_box_SEALBYTES);
+                }
+                else
+                {
+                    memset(cryptstart, 0, crypto_box_SEALBYTES);
+                }
+                break;
+
+            case 'e':
+                cryptstart = buf;
+                break;
+
+            case 'E':
+                break;
+
+            case 's':
+                sigstart = buf;
+                break;
+
+            case 'S':
+                size += crypto_sign_BYTES;
+                if (size > cap)
+                {
+                    size = NPOS;
+                    goto _trip_pack_end;
+                }
+
+                sigkey = va_arg(ap, unsigned char *);
+                if (sigkey)
+                {
+                    size_t siglen = (unsigned char *)buf - sigstart;
+                    crypto_sign(buf, NULL, sigstart, siglen, sigkey);
+                }
+                else
+                {
+                    memset(buf, 0, crypto_sign_BYTES);
+                }
+                buf += crypto_sign_BYTES;
+                break;
+
+            case 'n':
+                size += crypto_box_NONCEBYTES;
+                if (size > cap)
+                {
+                    size = NPOS;
+                    goto _trip_pack_end;
+                }
+
+                nonce = va_arg(ap, unsigned char *);
+                if (nonce)
+                {
+                    memcpy(buf, nonce, crypto_box_NONCEBYTES);
+                }
+                else
+                {
+                    memset(buf, 0, crypto_box_NONCEBYTES);
+                }
+                buf += crypto_box_NONCEBYTES;
+                break;
+
+            case 'k':
+                size += crypto_box_PUBLICKEYBYTES;
+                if (size > cap)
+                {
+                    size = NPOS;
+                    goto _trip_pack_end;
+                }
+
+                key = va_arg(ap, unsigned char *);
+                if (key)
+                {
+                    memcpy(buf, key, crypto_box_PUBLICKEYBYTES);
+                }
+                else
+                {
+                    memset(buf, 0, crypto_box_PUBLICKEYBYTES);
+                }
+                buf += crypto_box_PUBLICKEYBYTES;
+                break;
+
             case 'b':
                 rlen = va_arg(ap, size_t);
                 raw = va_arg(ap, unsigned char *);
@@ -318,6 +448,7 @@ trip_pack(size_t cap, unsigned char *buf, const char *format, ...)
                     buf += rlen;
                 }
                 break;
+
             case 'c':
                 size += 1;
                 if (size > cap)
@@ -449,30 +580,6 @@ trip_pack(size_t cap, unsigned char *buf, const char *format, ...)
                 {
                     *buf = (0x00000000000000FF & Q);
                 }
-                break;
-
-            case 'n':
-                size += _TRIP_NONCE;
-                if (size > cap)
-                {
-                    size = NPOS;
-                    goto _trip_pack_end;
-                }
-                raw = va_arg(ap, unsigned char *);
-                memcpy(buf, raw, _TRIP_NONCE);
-                buf += _TRIP_NONCE;
-                break;
-
-            case 'k':
-                size += TRIP_KEY_PUB;
-                if (size > cap)
-                {
-                    size = NPOS;
-                    goto _trip_pack_end;
-                }
-                raw = va_arg(ap, unsigned char *);
-                memcpy(buf, raw, TRIP_KEY_PUB);
-                buf += TRIP_KEY_PUB;
                 break;
 
             default:
