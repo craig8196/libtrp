@@ -4,42 +4,59 @@
 #include <errno.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <string.h>
+// TODO switch to interface function for random generation
 #include <sodium.h>
 
 #include "libtrp_memory.h"
 #include "util.h"
 
 
-
-void
-connmap_init(connmap_t *map, uint64_t max)
+static uint64_t
+connmap_max_conn(void)
 {
-    *map = (connmap_t){ 0 };
-    map->mask = near_pwr2_64(max);
+    return (uint64_t)1 << 31;
 }
 
-void
-connmap_destroy(connmap_t *map)
+static uintptr_t
+connmap_index_at(connmap_t *map, connmap_entry_t *e)
 {
-    if (map->map)
-    {
-        tripm_free(map->map);
-        *map = (connmap_t){ 0 };
-    }
+    return (uintptr_t)(e - map->map);
 }
 
-void
-connmap_clear(connmap_t *map)
+static size_t
+connmap_index(connmap_t *map, uint64_t id)
 {
-    uint64_t max = map->mask + 1;
-    connmap_destroy(map);
-    connmap_init(map, max);
+    return (size_t)(map->mask & id);
 }
 
-static int
+static bool
+connmap_has_free(connmap_t *map)
+{
+    return NPOS != map->free;
+}
+
+static void
+connmap_push(connmap_t *map, connmap_entry_t *e)
+{
+    size_t eindex = connmap_index_at(map, e);
+    e->isfull = false;
+    e->u.next = map->free;
+    map->free = eindex;
+}
+
+static connmap_entry_t *
+connmap_pop(connmap_t *map)
+{
+    connmap_entry_t *e = &map->map[map->free];
+    map->free = e->u.next;
+    return e;
+}
+
+static size_t
 connmap_max(connmap_t *map)
 {
-    return (int)map->mask + 1;
+    return (size_t)(map->mask + 1);
 }
 
 static uint64_t
@@ -52,19 +69,51 @@ connmap_random()
     return r;
 }
 
-int
+#include <stdio.h>
+void
+connmap_init(connmap_t *map, uint64_t max)
+{
+    printf("%s: init\n", __func__);
+    if (!max)
+    {
+        max = 1;
+    }
+    if (max > connmap_max_conn())
+    {
+        max = connmap_max_conn();
+    }
+    memset(map, 0, sizeof(connmap_t));
+    map->mask = near_pwr2_64(max) - 1;
+    map->free= NPOS;
+}
+
+void
+connmap_destroy(connmap_t *map)
+{
+    map->map = tripm_cfree(map->map);
+}
+
+void
+connmap_clear(connmap_t *map)
+{
+    uint64_t max = connmap_max(map);
+    connmap_destroy(map);
+    connmap_init(map, max);
+}
+
+size_t
 connmap_iter_beg(connmap_t * UNUSED(map))
 {
     return 0;
 }
 
 _trip_connection_t *
-connmap_iter_get(connmap_t *map, int it)
+connmap_iter_get(connmap_t *map, size_t it)
 {
-    return map->map[it];
+    return map->map[it].isfull ? map->map[it].u.c : NULL;
 }
 
-int
+size_t
 connmap_iter_end(connmap_t *map)
 {
     return map->cap;
@@ -80,10 +129,10 @@ connmap_add(connmap_t *map, _trip_connection_t *conn)
 
     do
     {
-        if (!map->free)
+        if (!connmap_has_free(map))
         {
             /* Need more free. */
-            int max = connmap_max(map);
+            size_t max = connmap_max(map);
 
             /* Check if map is at max. */
             if (map->size >= max)
@@ -95,7 +144,8 @@ connmap_add(connmap_t *map, _trip_connection_t *conn)
             /* Check if map exists. */
             if (map->map)
             {
-                void *m = tripm_realloc(map->map, sizeof(_trip_connection_t *) * (map->cap * 2));
+                printf("%s: re-alloc\n", __func__);
+                void *m = tripm_realloc(map->map, sizeof(connmap_entry_t) * (map->cap * 2));
                 
                 if (!m)
                 {
@@ -103,19 +153,20 @@ connmap_add(connmap_t *map, _trip_connection_t *conn)
                     break;
                 }
 
-                int i = map->cap;
+                map->map = m;
+                size_t i = map->cap;
                 map->cap = map->cap * 2;
-                map->free = &map->map[i];
-                for (; i < (map->cap - 2); ++i)
+                size_t len = map->cap;
+                for (; i < len; ++i)
                 {
-                    map->map[i] = (_trip_connection_t *)&map->map[i + 1];
+                    connmap_push(map, &map->map[i]);
                 }
 
-                map->map = m;
             }
             else
             {
-                void *m = tripm_alloc(sizeof(_trip_connection_t *));
+                printf("%s: alloc\n", __func__);
+                void *m = tripm_alloc(sizeof(connmap_entry_t));
 
                 if (!m)
                 {
@@ -125,24 +176,21 @@ connmap_add(connmap_t *map, _trip_connection_t *conn)
 
                 map->map = m;
                 map->cap = 1;
-                map->free = &map->map[0];
+                connmap_push(map, map->map);
             }
         }
 
         /* There are free slots. */
-        _trip_connection_t **slot = map->free;
-        /* Advance free slot. */
-        map->free = *((_trip_connection_t **)map->free);
+        connmap_entry_t *e = connmap_pop(map);
         /* Create ID. */
-        uint64_t index = (slot) - map->map;
+        uint64_t index = e - map->map;
         uint64_t r = connmap_random();
         uint64_t id = index ^ (r & ~map->mask);
         conn->self.id = id;
-        *slot = conn;
+        e->isfull = true;
+        e->u.c = conn;
         /* Increase size. */
         ++map->size;
-
-
     } while (false);
 
     return code;
@@ -151,23 +199,14 @@ connmap_add(connmap_t *map, _trip_connection_t *conn)
 _trip_connection_t *
 connmap_del(connmap_t *map, uint64_t id)
 {
-    int index = (int)(map->mask & id);
+    size_t index = connmap_index(map, id);
     if (index < map->cap)
     {
-        _trip_connection_t *c = map->map[index];
-        if (id == c->self.id)
+        connmap_entry_t *e = &map->map[index];
+        if (e->isfull && id == e->u.c->self.id)
         {
-            _trip_connection_t **slot = &map->map[index];
-            if (map->free)
-            {
-                *slot = (_trip_connection_t *)map->free;
-            }
-            else
-            {
-                *slot = NULL;
-            }
-
-            map->free = (void *)slot;
+            _trip_connection_t *c = e->u.c;
+            connmap_push(map, e);
             --map->size;
 
             if (!map->size)
@@ -185,13 +224,13 @@ connmap_del(connmap_t *map, uint64_t id)
 _trip_connection_t *
 connmap_get(connmap_t *map, uint64_t id)
 {
-    int index = (int)(map->mask & id);
+    size_t index = connmap_index(map, id);
     if (LIKELY(index < map->cap))
     {
-        _trip_connection_t *c = map->map[index];
-        if (LIKELY(id == c->self.id))
+        connmap_entry_t *e = &map->map[index];
+        if (e->isfull && LIKELY(id == e->u.c->self.id))
         {
-            return c;
+            return e->u.c;
         }
         else
         {

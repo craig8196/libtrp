@@ -36,6 +36,16 @@ extern "C" {
 #include "conn.h"
 
 
+typedef struct connmap_entry_s
+{
+    bool isfull;
+    union
+    {
+        _trip_connection_t *c;
+        size_t next;
+    } u;
+} connmap_entry_t;
+
 /**
  * Currently limited to power of 2 max connections.
  * The connection's ID is also the index when modulo conlen.
@@ -52,13 +62,15 @@ typedef struct connmap_s
     /* Mask for indexing. +1 for max number of entries, determines upper bits. */
     uint64_t mask;
     /* Size of the map. */
-    int size;
+    size_t size;
     /* Capacity of the map. */
-    int cap;
+    size_t cap;
+    /* Bitmap. */
+    // TODO bitmap_t *bitmap;
     /* Map. */
-    _trip_connection_t **map;
+    connmap_entry_t *map;
     /* Empty slot list. */
-    void *free;
+    size_t free;
 } connmap_t;
 
 void
@@ -70,13 +82,13 @@ connmap_destroy(connmap_t *map);
 void
 connmap_clear(connmap_t *map);
 
-int
+size_t
 connmap_iter_beg(connmap_t *map);
 
 _trip_connection_t *
-connmap_iter_get(connmap_t *map, int it);
+connmap_iter_get(connmap_t *map, size_t it);
 
-int
+size_t
 connmap_iter_end(connmap_t *map);
 
 int
