@@ -28,6 +28,7 @@
 #include "libtrp_memory.h"
 
 #include "core.h"
+#include "crypto.h"
 #include "trip.h"
 #include "conn.h"
 #include "message.h"
@@ -63,6 +64,12 @@ _trip_state_str(int s)
         "_TRIPR_STATE_ERROR",
     };
     return map[s];
+}
+
+void
+_trip_screen_init(trip_screen_t *screen)
+{
+    memset(screen, 0, sizeof(trip_screen_t));
 }
 
 _trip_connection_t *
@@ -372,7 +379,7 @@ void
 _trip_close_connection(_trip_router_t *r, _trip_connection_t *c)
 {
     c->router->connection((trip_connection_t *)c);
-    connmap_del(&r->con, c->self.id);
+    connmap_del(&r->conn, c->self.id);
     _tripc_destroy(c);
     _trip_free_connection(c);
 }
@@ -380,11 +387,11 @@ _trip_close_connection(_trip_router_t *r, _trip_connection_t *c)
 void
 _trip_close(_trip_router_t *r, int gracems)
 {
-    int i = connmap_iter_beg(&r->con);
-    int end = connmap_iter_end(&r->con);
+    int i = connmap_iter_beg(&r->conn);
+    int end = connmap_iter_end(&r->conn);
     while (i != end)
     {
-        _trip_connection_t *c = connmap_iter_get(&r->con, i);
+        _trip_connection_t *c = connmap_iter_get(&r->conn, i);
         tripc_close((trip_connection_t *)c, gracems);
         if (0 == gracems)
         {
@@ -393,12 +400,16 @@ _trip_close(_trip_router_t *r, int gracems)
         ++i;
     }
 
-    connmap_clear(&r->con);
+    connmap_clear(&r->conn);
 }
 
 static void
 _trip_router_reject(_trip_router_t *r, int src, int reason)
 {
+#if DEBUG_ROUTER
+    printf("%s: src(%d) reason(%d)\n", __func__, src, reason);
+#endif
+
     // TODO figure out how we handle rejections
     r = r;
     src = src;
@@ -414,13 +425,45 @@ _trip_router_is_reported(_trip_router_t *r, int src)
     return false;
 }
 
-_trip_connection_t *
-_trip_router_get_by_address(_trip_router_t *r, int src)
+/**
+ * TODO make sure to add connections if the return
+ * ID differs
+ * TODO multiple connection should be allowed between routers, although should be discouraged since the point of a connection is bulk, async communication
+ */
+void
+_trip_router_set_conn_by_src(_trip_router_t *r, int src, _trip_connection_t *conn)
 {
-    // TODO get connection based on source
-    r = r;
-    src = src;
-    return NULL;
+    int index = 0;
+    size_t sentinel = 0;
+    size_t len = sizeof(r->connsrc)/sizeof(r->connsrc[0]);
+    size_t mask = len - 1;
+    for (; sentinel < len; ++sentinel, index = (index + 1) & mask)
+    {
+        if (r->connsrc[index])
+        {
+            if (r->connsrc[index]->src == src)
+            {
+                return;
+            }
+            else
+            {
+                /* TODO What is conflict resolution? */
+                // keep seaching i guess...
+            }
+        }
+        else
+        {
+            r->connsrc[index] = conn;
+            return;
+        }
+    }
+}
+
+_trip_connection_t *
+_trip_router_get_conn_by_src(_trip_router_t *r, int src, uint64_t peerid)
+{
+    _trip_connection_t *c = r->connsrc[src % 2];
+    return c && c->peer.id == peerid ? c : NULL;
 }
 
 /**
@@ -460,13 +503,13 @@ _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
 
     /* Unpack the prefix information. */
     _trip_prefix_t prefix;
-    int end = trip_unpack(len, buf, "OVV",
-                          &prefix.control,
-                          &prefix.id,
-                          &prefix.seq);
+    size_t end = trip_unpack(len, buf, "CQW",
+                             &prefix.control,
+                             &prefix.id,
+                             &prefix.seq);
 
     /* Discard if unpack failed. */
-    if (end <= 0)
+    if (NPOS == end || 0 == end)
     {
         _trip_router_reject(r, src, 1);
         return;
@@ -492,6 +535,9 @@ _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
             _trip_router_reject(r, src, 2);
             return;
         }
+#if DEBUG_ROUTER
+        printf("%s: PASSED ALLOW IN\n", __func__);
+#endif
 
         /* Check if encryption is required. */
         if (!prefix.encrypted && !(r->flag & _TRIPR_FLAG_ALLOW_PLAIN_OPEN))
@@ -499,43 +545,85 @@ _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
             _trip_router_reject(r, src, 3);
             return;
         }
+#if DEBUG_ROUTER
+        printf("%s: PASSED ALLOW PLAIN OPEN\n", __func__);
+#endif
 
         /* Unpack version and routing information. */
-        uint16_t version = 0;
-        _trip_route_t route;
-        int endroute = trip_unpack(len - end, buf + end, "HVp",
-                               &version,
-                               &route.len,
-                               &route.route);
+        trip_screen_t screen;
+        _trip_screen_init(&screen);
+        size_t endroute = trip_unpack(len - end, buf + end, "HVp",
+                                      &screen.version,
+                                      &screen.routelen,
+                                      &screen.route);
 
         /* Discard if unpack failed. */
-        if (endroute <= 0)
+        if (0 == endroute || NPOS == endroute)
         {
             _trip_router_reject(r, src, 4);
             return;
         }
+        end += endroute;
+#if DEBUG_ROUTER
+        printf("%s: PASSED EXTRACT ROUTE\n", __func__);
+#endif
 
         /* Discard if we don't support the version number. */
-        if (version != TRIP_VERSION_MAJOR)
+        if (screen.version != TRIP_VERSION_MAJOR)
         {
             _trip_router_reject(r, src, 5);
             return;
         }
+#if DEBUG_ROUTER
+        printf("%s: PASSED VERSION CHECK\n", __func__);
+#endif
 
         /* Find the connection if it exists.
          * Create if it doesn't exist.
          */
-        _trip_connection_t *c = _trip_router_get_by_address(r, src);
+        _trip_connection_t *c = _trip_router_get_conn_by_src(r, src, prefix.id);
+
         if (!c)
         {
+            /* Pass information to the user.
+             * User is allowed to view source of incoming request.
+             * User is allowed to view routing buffer.
+             * User is allowed to specify open decryption keys.
+             * User is allowed to create user data.
+             */
+            r->screen((trip_router_t *)r, &screen);
+            if (!screen.allow)
+            {
+                return;
+            }
+
+            /* else */
+            // TODO user validation
+            // TODO open validation
+            // TODO signature validation
+
             c = _trip_new_connection(r);
             if (!c)
             {
                 _trip_router_reject(r, src, 6);
                 return;
             }
+
             _tripc_init(c, r, false);
             c->src = src;
+            if (connmap_add(&r->conn, c))
+            {
+                // TODO report to user since screen data
+                // may have been passed on
+                /* Error. */
+                _trip_free_connection(c);
+                _trip_router_reject(r, src, 50);
+                return;
+            }
+
+            _tripc_set_screen(c, &screen);
+
+            _tripc_start(c);
         }
         else
         {
@@ -544,10 +632,14 @@ _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
             c->src = src;
             // TODO what is the best thing here? should I reparse OPEN?
             // TODO should just resend challenge...
+            /* Set send so challenge is resent. */
+            // TODO need to recheck/recalc signature...
+            // TODO need to recheck parameters
             _tripc_set_send(c);
             return;
         }
 
+#if 0
         /* Discard if this sequence has been seen. */
         int seen = _tripc_check_open_seq(c, prefix.seq);
         if (seen)
@@ -555,56 +647,66 @@ _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
             _trip_router_reject(r, src, 20);
             return;
         }
+#endif
 
-        /* Pass information to the user.
-         * User is allowed to view source of incoming request.
-         * User is allowed to view routing buffer.
-         * User is allowed to specify open decryption keys.
-         * User is allowed to create user data.
-         */
-        // TODO user validation
-        // TODO signature validation
-
-        /* Decrypt OPEN buffer. */
-        int blen = len - endroute;
-        void *b = buf + endroute;
-        if (prefix.encrypted)
+        // TODO verify signature here
+        if (c->peer.signpk || !(r->flag & _TRIPR_FLAG_ALLOW_PLAIN_ISIG))
         {
-            if (_trip_decrypt(r, blen, b))
+            if (trip_unsign(len, buf, c->peer.signpk))
             {
-                _trip_router_reject(r, src, 21);
+                _trip_router_reject(r, src, 203);
                 return;
             }
-            // TODO blen -= mac_bytes...
-            // TODO b += mac_bytes... ?
+        }
+        else
+        {
+            // TODO verify that signature is zeros
         }
 
-        if (_tripc_read(c, prefix.control, blen, b))
+        /* Decrypt OPEN buffer. */
+        unsigned char *opensk = c->self.opensk ? c->self.opensk : r->opensk;
+        size_t maclen = trip_unpack(len - end - _TRIP_SIGN, buf + end, "oO", opensk);
+
+        if (0 == maclen || NPOS == maclen || (maclen + end) != len)
         {
-            /* Flag the sequence now that validation has taken place. */
-            _tripc_flag_open_seq(c, prefix.seq);
+            /* Didn't process entire buffer. */
+            _trip_router_reject(r, src, 201);
+            return;
+        }
+
+        end += maclen;
+
+        // TODO verify that settings don't violate
+        // router settings
+
+        if (_tripc_read(c, &prefix, len - end, buf + end))
+        {
+            /* Invalid OPEN packet. */
+            _trip_router_reject(r, src, 22);
+            return;
         }
     }
     else
     {
-        if (!prefix.encrypted && !(r->flag & _TRIPR_FLAG_ALLOW_PLAIN_SEGM))
+        if (!prefix.encrypted && !(r->flag & _TRIPR_FLAG_ALLOW_PLAIN_COMM))
         {
             /* Not encrypted when required. */
             _trip_router_reject(r, src, 7);
             return;
         }
 
-        _trip_connection_t *c = connmap_get(&r->con, prefix.id);
+        _trip_connection_t *c = connmap_get(&r->conn, prefix.id);
         if (c)
         {
-            /* TODO
-            _tripc_handle_segment(c, src, len - end, buf + end);
-            */
-            // TODO handle error code
+            if (_tripc_read(c, &prefix, len - end, buf + end))
+            {
+                _trip_router_reject(r, src, 79);
+                return;
+            }
         }
         else
         {
-            _trip_router_reject(r, src, 8);
+            _trip_router_reject(r, src, 88);
             return;
         }
     }
@@ -998,11 +1100,14 @@ trip_new(enum trip_preset preset)
         }
 
         resolveq_init(&r->resolveq);
-        connmap_init(&r->con, r->max_conn);
+        connmap_init(&r->conn, r->max_conn);
         timerwheel_init(&r->wheel);
-        // TODO set other settings
-    } while (false);
+        r->connsrc[0] = NULL;
+        r->connsrc[1] = NULL;
 
+        // TODO set other settings
+        // TODO reorder settings
+    } while (false);
 
     return (trip_router_t *)r;
 }
@@ -1023,7 +1128,7 @@ trip_free(trip_router_t *_r)
     tripm_cfree(r->buf);
 
     timerwheel_destroy(&r->wheel);
-    connmap_destroy(&r->con);
+    connmap_destroy(&r->conn);
     resolveq_destroy(&r->resolveq);
 
     tripm_free(r);
@@ -1035,6 +1140,7 @@ trip_setopt(trip_router_t *_r, enum trip_router_opt opt, ...)
 	va_list ap;
 
     trip_torouter(r, _r);
+    int *val;
     int rval = 0;
 
 	va_start(ap, opt);
@@ -1042,8 +1148,8 @@ trip_setopt(trip_router_t *_r, enum trip_router_opt opt, ...)
     switch (opt)
     {
         case TRIPOPT_OPEN_KP:
-            r->openpub = va_arg(ap, unsigned char *);
-            r->opensec = va_arg(ap, unsigned char *);
+            r->openpk = va_arg(ap, unsigned char *);
+            r->opensk = va_arg(ap, unsigned char *);
             break;
         case TRIPOPT_SIGN_KP:
             r->signpub = va_arg(ap, unsigned char *);
@@ -1077,6 +1183,58 @@ trip_setopt(trip_router_t *_r, enum trip_router_opt opt, ...)
             break;
         case TRIPOPT_MESSAGE_CB:
             r->message = va_arg(ap, trip_handle_message_t *);
+            break;
+        case TRIPOPT_ALLOW_PLAIN_OPEN:
+            {
+                val = va_arg(ap, int *);
+                if (val && (*val))
+                {
+                    r->flag |= _TRIPR_FLAG_ALLOW_PLAIN_OPEN;
+                }
+                else
+                {
+                    r->flag &= ~_TRIPR_FLAG_ALLOW_PLAIN_OPEN;
+                }
+            }
+            break;
+        case TRIPOPT_ALLOW_PLAIN_ISIG:
+            {
+                val = va_arg(ap, int *);
+                if (val && (*val))
+                {
+                    r->flag |= _TRIPR_FLAG_ALLOW_PLAIN_ISIG;
+                }
+                else
+                {
+                    r->flag &= ~_TRIPR_FLAG_ALLOW_PLAIN_ISIG;
+                }
+            }
+            break;
+        case TRIPOPT_ALLOW_PLAIN_OSIG:
+            {
+                val = va_arg(ap, int *);
+                if (val && (*val))
+                {
+                    r->flag |= _TRIPR_FLAG_ALLOW_PLAIN_OSIG;
+                }
+                else
+                {
+                    r->flag &= ~_TRIPR_FLAG_ALLOW_PLAIN_OSIG;
+                }
+            }
+            break;
+        case TRIPOPT_ALLOW_PLAIN_COMM:
+            {
+                val = va_arg(ap, int *);
+                if (val && (*val))
+                {
+                    r->flag |= _TRIPR_FLAG_ALLOW_PLAIN_COMM;
+                }
+                else
+                {
+                    r->flag &= ~_TRIPR_FLAG_ALLOW_PLAIN_COMM;
+                }
+            }
             break;
         default:
             rval = EINVAL;
@@ -1450,10 +1608,11 @@ trip_open_connection(trip_router_t *_r, void *data, size_t ilen,
         c->data = data;
         c->ilen = ilen;
         c->info = info;
+        // TODO make sure that after being resolved we delete the entry
         c->resolvekey = resolveq_put(&r->resolveq, c);
 
         /* Acquire connection ID on this router. */
-        if (connmap_add(&r->con, c))
+        if (connmap_add(&r->conn, c))
         {
             /* Error. */
             _tripc_set_error(c, EBUSY, NULL);

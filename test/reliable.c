@@ -54,16 +54,17 @@ typedef struct
  *
  * Possible information:
  * Allow flag to signal that this source is valid.
- * Routing.
+ * Routing buffer (binary).
  * Source address.
- * Source address binary.
- * Source address as string.
- * Signature.
- * Decrypt OPEN keys.
+ *   Source address as binary.
+ *   Source address as string.
+ * Set signature keys.
+ * Set decrypt OPEN keys.
  */
 void
-router_handle_screen(trip_screen_t *screen)
+router_handle_screen(trip_router_t *r, trip_screen_t *screen)
 {
+    r = r;
     screen->allow = true;
 }
 
@@ -214,15 +215,30 @@ router_init(mydata_t *data)
     data->stop = false;
     data->stopdeadline = triptime_deadline(1000);
 
+    /* Set router to have default presets. */
     trip_router_t *router = data->router = trip_new(TRIP_PRESET_ROUTER);
+
+    /* Set our data. */
     trip_packet_t *reliable = reliable_new();
     data->reliable = reliable;
     trip_setopt(router, TRIPOPT_USER_DATA, data);
+
+    /* Set callbacks. */
     trip_setopt(router, TRIPOPT_SCREEN_CB, router_handle_screen);
     trip_setopt(router, TRIPOPT_CONNECTION_CB, router_handle_connection);
     trip_setopt(router, TRIPOPT_STREAM_CB, router_handle_stream);
     trip_setopt(router, TRIPOPT_MESSAGE_CB, router_handle_message);
+
+    /* Set packet interface. */
     trip_setopt(router, TRIPOPT_PACKET, reliable);
+
+    /* Set security options. */
+    /* WARNING: Not recommended to disable all security. */
+    trip_setopt(router, TRIPOPT_ALLOW_PLAIN_OPEN, data);
+    trip_setopt(router, TRIPOPT_ALLOW_PLAIN_ISIG, data);
+    trip_setopt(router, TRIPOPT_ALLOW_PLAIN_OSIG, data);
+    trip_setopt(router, TRIPOPT_ALLOW_PLAIN_COMM, data);
+
     trip_run_init(router);
     trip_start(router);
 }

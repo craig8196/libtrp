@@ -42,9 +42,10 @@ typedef struct connself_s
     uint64_t sequence;
 
     /* Encryption. */
+    unsigned char *opensk;
+    unsigned char *signsk;
     unsigned char *pk;
     unsigned char *sk;
-    unsigned char *sig;
     unsigned char *nonce;
 
     /* Limits */

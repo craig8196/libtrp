@@ -75,6 +75,9 @@ trip_unpack(size_t blen, const unsigned char *buf, const char *format, ...);
 void
 trip_dump(size_t blen, const unsigned char *buf);
 
+int
+trip_unsign(size_t len, const unsigned char *buf, const unsigned char *key);
+
 
 #ifdef __cplusplus
 }

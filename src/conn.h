@@ -71,6 +71,8 @@ struct _trip_connection_s
     void *data;
     size_t ilen;
     unsigned char *info;
+    size_t rlen;
+    unsigned char *route;
     _trip_router_t *router;
 
     /* Packet source key. */
@@ -154,16 +156,22 @@ _tripc_free_message(_trip_connection_t *c, _trip_msg_t *m);
 void
 _tripc_close_stream(_trip_connection_t *c, _trip_stream_t *s);
 
+int
+_tripc_check_seq(_trip_connection_t *c, uint64_t seq);
+void
+_tripc_flag_seq(_trip_connection_t *c, uint64_t seq);
 void
 _tripc_flag_open_seq(_trip_connection_t *c, uint32_t seq);
 int
 _tripc_check_open_seq(_trip_connection_t *c, uint32_t seq);
 int
-_tripc_read(_trip_connection_t *c, unsigned char control, size_t len, const unsigned char *buf);
+_tripc_read(_trip_connection_t *c, _trip_prefix_t *prefix, size_t len, const unsigned char *buf);
 size_t
 _tripc_send(_trip_connection_t *c, size_t len, void *buf);
 void
 _tripc_set_send(_trip_connection_t *c);
+void
+_tripc_set_screen(_trip_connection_t *c, trip_screen_t *screen);
 
 
 #ifdef __cplusplus

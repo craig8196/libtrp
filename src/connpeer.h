@@ -42,8 +42,8 @@ typedef struct connpeer_s
 
     /* Encryption. */
     unsigned char *openpk;
+    unsigned char *signpk;
     unsigned char *pk;
-    unsigned char *sig;
     unsigned char *nonce;
 
     /* Sequences

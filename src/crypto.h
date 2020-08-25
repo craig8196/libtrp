@@ -35,6 +35,7 @@ extern "C" {
 
 
 /* Shorten some cryptography calls. */
+#define _TRIP_SIGN (crypto_sign_BYTES)
 #define _TRIP_NONCE (crypto_box_NONCEBYTES)
 #define _TRIP_BOX_PAD (crypto_box_NONCEBYTES)
 #define _trip_nonce_init(nonce) randombytes_buf((nonce), crypto_box_NONCEBYTES)

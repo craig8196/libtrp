@@ -215,11 +215,11 @@ trip_pack_len(const char *format)
                 break;
 
             case 's':
-                len += crypto_sign_BYTES;
+                len += _TRIP_SIGN;
                 break;
 
             case 'n':
-                len += crypto_box_NONCEBYTES;
+                len += _TRIP_NONCE;
                 break;
 
             case 'k':
@@ -365,7 +365,7 @@ trip_pack(size_t cap, unsigned char *buf, const char *format, ...)
                 break;
 
             case 'S':
-                size += crypto_sign_BYTES;
+                size += _TRIP_SIGN;
                 if (size > cap)
                 {
                     size = NPOS;
@@ -376,17 +376,17 @@ trip_pack(size_t cap, unsigned char *buf, const char *format, ...)
                 if (sigkey)
                 {
                     size_t siglen = (unsigned char *)buf - sigstart;
-                    crypto_sign(buf, NULL, sigstart, siglen, sigkey);
+                    crypto_sign_detached(buf, NULL, sigstart, siglen, sigkey);
                 }
                 else
                 {
-                    memset(buf, 0, crypto_sign_BYTES);
+                    memset(buf, 0, _TRIP_SIGN);
                 }
-                buf += crypto_sign_BYTES;
+                buf += _TRIP_SIGN;
                 break;
 
             case 'n':
-                size += crypto_box_NONCEBYTES;
+                size += _TRIP_NONCE;
                 if (size > cap)
                 {
                     size = NPOS;
@@ -396,13 +396,13 @@ trip_pack(size_t cap, unsigned char *buf, const char *format, ...)
                 nonce = va_arg(ap, unsigned char *);
                 if (nonce)
                 {
-                    memcpy(buf, nonce, crypto_box_NONCEBYTES);
+                    memcpy(buf, nonce, _TRIP_NONCE);
                 }
                 else
                 {
-                    memset(buf, 0, crypto_box_NONCEBYTES);
+                    memset(buf, 0, _TRIP_NONCE);
                 }
-                buf += crypto_box_NONCEBYTES;
+                buf += _TRIP_NONCE;
                 break;
 
             case 'k':
@@ -632,6 +632,30 @@ trip_unpack(size_t blen, unsigned char *buf, const char *format, ...)
     {
 		switch (*format)
         {
+            case 'n':
+                len += _TRIP_NONCE;
+                if (len > blen)
+                {
+                    len = NPOS;
+                    goto _trip_unpack_end;
+                }
+                raw = va_arg(ap, unsigned char *);
+                memcpy(raw, buf, _TRIP_NONCE);
+                buf += _TRIP_NONCE;
+                break;
+
+            case 'k':
+                len += TRIP_KEY_PUB;
+                if (len > blen)
+                {
+                    len = NPOS;
+                    goto _trip_unpack_end;
+                }
+                raw = va_arg(ap, unsigned char *);
+                memcpy(raw, buf, TRIP_KEY_PUB);
+                buf += TRIP_KEY_PUB;
+                break;
+
             case 'c':
                 len++;
                 if (len > blen)
@@ -754,7 +778,7 @@ trip_unpack(size_t blen, unsigned char *buf, const char *format, ...)
                     }
                     unsigned char l = *buf;
                     len += 1 + l;
-                    if (l > 4 || len > blen)
+                    if (l > TRIPPACK_MAX_VAR || len > blen)
                     {
                         len = NPOS;
                         goto _trip_unpack_end;
@@ -772,28 +796,31 @@ trip_unpack(size_t blen, unsigned char *buf, const char *format, ...)
                 }
                 break;
 
-            case 'n':
-                len += _TRIP_NONCE;
-                if (len > blen)
+            case 'W':
                 {
-                    len = NPOS;
-                    goto _trip_unpack_end;
+                    if (len + 1 > blen)
+                    {
+                        len = NPOS;
+                        goto _trip_unpack_end;
+                    }
+                    unsigned char l = *buf;
+                    len += 1 + l;
+                    if (l > TRIPPACK_MAX_DVAR || len > blen)
+                    {
+                        len = NPOS;
+                        goto _trip_unpack_end;
+                    }
+                    ++buf;
+                    int index = 0;
+                    uint64_t n = 0;
+                    for (; index < l; ++index, ++buf)
+                    {
+                        n = n << 8;
+                        n ^= (unsigned long long int)*buf;
+                    }
+                    Q = va_arg(ap, unsigned long long int *);
+                    *Q = n;
                 }
-                raw = va_arg(ap, unsigned char *);
-                memcpy(raw, buf, _TRIP_NONCE);
-                buf += _TRIP_NONCE;
-                break;
-
-            case 'k':
-                len += TRIP_KEY_PUB;
-                if (len > blen)
-                {
-                    len = NPOS;
-                    goto _trip_unpack_end;
-                }
-                raw = va_arg(ap, unsigned char *);
-                memcpy(raw, buf, TRIP_KEY_PUB);
-                buf += TRIP_KEY_PUB;
                 break;
 
             default:
@@ -824,5 +851,17 @@ trip_dump(size_t blen, const unsigned char *buf)
             printf("%x", buf[i]);
         }
     }
+}
+
+int
+trip_unsign(size_t len, const unsigned char *buf, const unsigned char *pk)
+{
+    if (!pk || len <= _TRIP_SIGN)
+    {
+        return EINVAL;
+    }
+
+    len -= _TRIP_SIGN;
+    return crypto_sign_verify_detached(buf + len, buf, len, pk);
 }
 

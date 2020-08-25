@@ -48,8 +48,6 @@ typedef struct _trip_connection_s _trip_connection_t;
 typedef struct _trip_stream_s _trip_stream_t;
 typedef struct _trip_msg_s _trip_msg_t;
 typedef struct _trip_prefix_s _trip_prefix_t;
-typedef struct _trip_route_s _trip_route_t;
-typedef struct _trip_open_s _trip_open_t;
 
 enum _tripr_state
 {
@@ -65,10 +63,11 @@ enum _tripr_state
 #define _TRIPR_FLAG_ALLOW_IN           (1 << 0)
 #define _TRIPR_FLAG_ALLOW_OUT          (1 << 1)
 #define _TRIPR_FLAG_ALLOW_PLAIN_OPEN   (1 << 2)
-#define _TRIPR_FLAG_ALLOW_PLAIN_SEGM   (1 << 3)
-#define _TRIPR_FLAG_ALLOW_PLAIN_SIGN   (1 << 4)
-#define _TRIPR_FLAG_FREE_PACKET        (1 << 5)
-#define _TRIPR_FLAG_ALWAYS_READY       (1 << 6)
+#define _TRIPR_FLAG_ALLOW_PLAIN_ISIG   (1 << 3)
+#define _TRIPR_FLAG_ALLOW_PLAIN_OSIG   (1 << 4)
+#define _TRIPR_FLAG_ALLOW_PLAIN_COMM   (1 << 5)
+#define _TRIPR_FLAG_FREE_PACKET        (1 << 6)
+#define _TRIPR_FLAG_ALWAYS_READY       (1 << 7)
 
 #define _TRIPR_DEFAULT_MAX_CONN (1 << 19)
 #define _TRIPR_DEFAULT_MAX_STREAM (8)
@@ -109,7 +108,9 @@ struct _trip_router_s
     resolveq_t resolveq;
 
     /* Connections. */
-    connmap_t con;
+    connmap_t conn;
+    // TODO create real datastructure, src should be easily indexed...
+    _trip_connection_t *connsrc[2];
 
     /* Socket map. */
     sockmap_t sockmap;
@@ -129,8 +130,8 @@ struct _trip_router_s
     uint64_t mindeadline;
 
     /* Encryption */
-    unsigned char *openpub;
-    unsigned char *opensec;
+    unsigned char *openpk;
+    unsigned char *opensk;
     unsigned char *signpub;
     unsigned char *signsec;
 

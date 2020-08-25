@@ -77,10 +77,16 @@ typedef void trip_handle_timeout_t(trip_router_t *, long);
 typedef struct trip_screen_s
 {
     bool allow;
-    // TODO more features coming...
+    uint16_t version; /* Major */
+    uint32_t routelen;
+    unsigned char *route;
+    void *data;
+    unsigned char *opensk; /* Decrypt custom incoming OPEN */
+    unsigned char *signpk; /* Verify custom incoming OPEN */
+    unsigned char *signsk; /* Verify custom outgoing CHALLENGE */
 } trip_screen_t;
 
-typedef void trip_handle_screen_t(trip_screen_t *);
+typedef void trip_handle_screen_t(trip_router_t *r, trip_screen_t *);
 typedef void trip_handle_connection_t(trip_connection_t *);
 typedef void trip_handle_stream_t(trip_stream_t *);
 enum trip_message_status
@@ -115,6 +121,10 @@ enum trip_router_opt
     TRIPOPT_CONNECTION_CB,
     TRIPOPT_STREAM_CB,
     TRIPOPT_MESSAGE_CB,
+    TRIPOPT_ALLOW_PLAIN_OPEN,
+    TRIPOPT_ALLOW_PLAIN_ISIG, /* Incoming unsigned packets. */
+    TRIPOPT_ALLOW_PLAIN_OSIG, /* Outgoing unsigned packets. */
+    TRIPOPT_ALLOW_PLAIN_COMM,
 };
 
 trip_router_t *

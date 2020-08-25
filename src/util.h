@@ -31,6 +31,7 @@ extern "C" {
 #endif
 
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -62,11 +63,21 @@ extern "C" {
 void *
 tripm_cfree(void *p);
 
+/**
+ * Binary duplicate.
+ */
+void *
+tripm_bdup(size_t len, unsigned char *buf);
+
 
 int
 near_pwr2(int n);
+
 uint64_t
 near_pwr2_64(uint64_t n);
+
+bool
+are_zeros(size_t len, unsigned char *buf);
 
 
 #ifdef __cplusplus

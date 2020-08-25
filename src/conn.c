@@ -89,6 +89,17 @@ _tripc_set_error(_trip_connection_t *c, int eval, const char *msg)
 }
 
 void
+_tripc_set_screen(_trip_connection_t *c, trip_screen_t *screen)
+{
+    c->data = screen->data;
+    c->rlen = screen->routelen;
+    c->route = tripm_bdup(c->rlen, screen->route);
+    c->self.opensk = screen->opensk;
+    c->peer.signpk = screen->signpk;
+    c->self.signsk = screen->signsk;
+}
+
+void
 _tripc_close_stream(_trip_connection_t *c, _trip_stream_t *s)
 {
     c = c; // TODO
@@ -326,8 +337,7 @@ _tripc_send_open(_trip_connection_t *c, size_t blen, void *buf)
         | Octets | Field |
         |:------ |:----- |
         | 48 | Encrypt Padding
-        | 4 | Receiver ID for future responses/requests
-        | 8 | Timestamp
+        | 8 | Receiver ID for future responses/requests
         | 24 | Nonce client (Zeroes if unencrypted)
         | 32 | Public key client (Zeroes if unencrypted)
         | 4 | Sender Max Credit
@@ -337,18 +347,17 @@ _tripc_send_open(_trip_connection_t *c, size_t blen, void *buf)
         | S | SIGNATURE (OUTSIDE ENCRYPTION) |
 
     */
-    static const char fmt[] = "sCQWHboQnkIIIIOS";
-    //static const char fmt[] = "sCQWHboQQnkIIIIOS";
+    static const char FMT[] = "sCQWHboQnkIIIIOS";
 
 #if DEBUG_CONNECTION
-    printf("%s: packlen(%lu)\n", __func__, trip_pack_len(fmt));
+    printf("%s: packlen(%lu)\n", __func__, trip_pack_len(FMT));
 #endif
 
     uint8_t eflag = c->peer.openpk ? _TRIP_PREFIX_EMASK : 0;
 
-    size_t len = trip_pack(blen, buf, fmt,
+    size_t len = trip_pack(blen, buf, FMT,
         (uint8_t)(_TRIP_CONTROL_OPEN | eflag),
-        (uint64_t)0,
+        c->self.id,
         _tripc_seq(c),
 
         (uint16_t)TRIP_VERSION_MAJOR,
@@ -365,7 +374,7 @@ _tripc_send_open(_trip_connection_t *c, size_t blen, void *buf)
         (uint32_t)65536,
         (uint32_t)128,
 
-        c->self.sig
+        c->self.signsk
         );
 #if DEBUG_CONNECTION
     printf("OPEN:\n");
@@ -379,10 +388,16 @@ _tripc_send_open(_trip_connection_t *c, size_t blen, void *buf)
 size_t
 _tripc_send_chal(_trip_connection_t *c, size_t blen, void *buf)
 {
-    return trip_pack(blen, buf, "sCQWHbeQQnkIIIIES",
-        (uint8_t)_TRIP_CONTROL_OPEN,
+    static const char FMT[] =   "sCQWoQnkIIIIOS";
+
+    uint8_t eflag = c->peer.pk ? _TRIP_PREFIX_EMASK : 0;
+
+    size_t len = trip_pack(blen, buf, FMT,
+        (uint8_t)(_TRIP_CONTROL_OPEN | eflag),
         c->peer.id,
         _tripc_seq(c),
+
+        c->peer.pk,
 
         c->self.id,
         c->self.nonce,
@@ -391,9 +406,16 @@ _tripc_send_chal(_trip_connection_t *c, size_t blen, void *buf)
         (uint32_t)8,
         (uint32_t)65536,
         (uint32_t)128,
-        c->peer.pk,
-        c->self.sig
+
+        c->self.signsk
         );
+#if DEBUG_CONNECTION
+    printf("OPEN:\n");
+    trip_dump(len, buf);
+    printf("\n");
+#endif
+
+    return len;
 }
 
 size_t
@@ -413,41 +435,66 @@ _tripc_send_ping(_trip_connection_t *c, size_t blen, void *buf)
         );
 }
 
+/**
+ * Note that we only need to parse the data in the encrypted section.
+ * OPEN packets are entangled with the router's responsibilities of filtering.
+ */
 int
 _tripc_parse_open(_trip_connection_t *c, size_t len, const unsigned char *buf)
 {
-    int length = trip_unpack((int)len, buf, "sCQWHboQQnkIIIIOS",
-        (uint8_t)_TRIP_CONTROL_OPEN,
-        (uint64_t)0,
-        _tripc_seq(c),
+    const char FMT[] = "QnkIIII";
 
-        (uint16_t)TRIP_VERSION_MAJOR,
-        (size_t)0,
-        (void *)NULL,
+    // TODO extract!
+    uint64_t id;
+    unsigned char nonce[_TRIP_NONCE];
+    unsigned char key[TRIP_KEY_PUB];
+    uint32_t maxcredits;
+    uint32_t maxstreams;
+    uint32_t maxmessagesize;
+    uint32_t maxmessages;
 
-        c->self.id,
-        c->self.nonce,
-        c->self.pk,
-        (uint32_t)128000,
-        (uint32_t)8,
-        (uint32_t)65536,
-        (uint32_t)128,
-        c->peer.openpk,
-        c->peer.sig
-        );
-    if (length < 0)
+    // TODO inject OPEN
+    size_t olen = trip_unpack(len, buf, FMT,
+        // TODO the length of the signature is an issue
+        // we need to know how long the decrypt buf is prior to decryption
+        &id,
+        nonce,
+        key,
+        &maxcredits,
+        &maxstreams,
+        &maxmessagesize,
+        &maxmessages);
+
+    if (olen != len)
     {
         return EINVAL;
+    }
+
+    c->peer.id = id;
+    c->peer.lim.credit = maxcredits;
+    c->peer.lim.stream = maxstreams;
+    c->peer.lim.message_size = maxmessagesize;
+    c->peer.lim.message = maxmessages;
+
+    if (are_zeros(_TRIP_NONCE, nonce) || are_zeros(TRIP_KEY_PUB, key))
+    {
+        return EINVAL;
+    }
+    else
+    {
+        c->peer.nonce = tripm_alloc(_TRIP_NONCE);
+        c->peer.pk = tripm_alloc(TRIP_KEY_PUB);
+        memcpy(c->peer.nonce, nonce, _TRIP_NONCE);
+        memcpy(c->peer.pk, key, TRIP_KEY_PUB);
     }
 
     return 0;
 }
 
 int
-_tripc_parse_chal(_trip_connection_t *c)
+_tripc_parse_chal(_trip_connection_t *c, size_t len, const unsigned char *buf)
 {
-    c = c;
-    return EINVAL;
+    return _tripc_parse_open(c, len, buf);
 }
 
 int
@@ -465,8 +512,20 @@ _tripc_parse_ping(_trip_connection_t *c)
 }
 
 int
-_tripc_read(_trip_connection_t *c, unsigned char control, size_t len, const unsigned char *buf)
+_tripc_parse_disconnect(_trip_connection_t *c)
 {
+    c = c;
+    return EINVAL;
+}
+
+int
+_tripc_read(_trip_connection_t *c, _trip_prefix_t *prefix, size_t len, const unsigned char *buf)
+{
+    if (_tripc_check_seq(c, prefix->seq))
+    {
+        return EINVAL;
+    }
+
     len = len; buf = buf;
     switch (c->state)
     {
@@ -478,15 +537,17 @@ _tripc_read(_trip_connection_t *c, unsigned char control, size_t len, const unsi
             break;
         case _TRIPC_STATE_OPEN:
             {
-                if(_tripc_parse_chal(c))
+                if(_tripc_parse_chal(c, len, buf))
                 {
                     return EINVAL;
                 }
+
+                _tripc_set_state(c, _TRIPC_STATE_PING);
             }
             break;
         case _TRIPC_STATE_CHAL:
             {
-                if (_TRIP_CONTROL_DATA == control)
+                if (_TRIP_CONTROL_DATA == prefix->control)
                 {
                     if (_tripc_parse_data(c))
                     {
@@ -495,25 +556,24 @@ _tripc_read(_trip_connection_t *c, unsigned char control, size_t len, const unsi
 
                     _tripc_set_state(c, _TRIPC_STATE_READY);
                 }
-                else if (_TRIP_CONTROL_OPEN == control)
+                else if (_TRIP_CONTROL_OPEN == prefix->control)
                 {
                     if (_tripc_parse_open(c, len, buf))
                     {
                         return EINVAL;
                     }
 
-                    // TODO friend didn't receive chal set send state
-                    // TODO send chal packet in send function
+                    /* Challenge packet will be resent. */
                     _tripc_set_send(c);
                 }
-                else if (_TRIP_CONTROL_PING == control)
+                else if (_TRIP_CONTROL_PING == prefix->control)
                 {
                     if (_tripc_parse_ping(c))
                     {
                         return EINVAL;
                     }
 
-                    _tripc_set_state(c, _TRIPC_STATE_READY);
+                    _tripc_set_state(c, _TRIPC_STATE_READY_PING);
                 }
                 else
                 {
@@ -522,23 +582,74 @@ _tripc_read(_trip_connection_t *c, unsigned char control, size_t len, const unsi
             }
             break;
         case _TRIPC_STATE_PING:
+        case _TRIPC_STATE_READY:
+        case _TRIPC_STATE_READY_PING:
             {
-                if (_tripc_parse_ping(c))
+                if (_TRIP_CONTROL_DATA == prefix->control)
+                {
+                    if (_tripc_parse_data(c))
+                    {
+                        return EINVAL;
+                    }
+                }
+                else if (_TRIP_CONTROL_PING == prefix->control)
+                {
+                    if (_tripc_parse_ping(c))
+                    {
+                        return EINVAL;
+                    }
+
+                    _tripc_set_state(c, _TRIPC_STATE_READY);
+                }
+                else if (_TRIP_CONTROL_DISC == prefix->control)
+                {
+                    if (_tripc_parse_disconnect(c))
+                    {
+                        return EINVAL;
+                    }
+
+                    _tripc_set_state(c, _TRIPC_STATE_CLOSE);
+                }
+                else
                 {
                     return EINVAL;
                 }
             }
             break;
-        case _TRIPC_STATE_READY:
+        case _TRIPC_STATE_CLOSE:
             {
-            }
-            break;
-        case _TRIPC_STATE_READY_PING:
-            {
+                if (_TRIP_CONTROL_DATA == prefix->control)
+                {
+                    if (_tripc_parse_data(c))
+                    {
+                        return EINVAL;
+                    }
+                }
+                else if (_TRIP_CONTROL_PING == prefix->control)
+                {
+                    if (_tripc_parse_ping(c))
+                    {
+                        return EINVAL;
+                    }
+
+                    _tripc_set_state(c, _TRIPC_STATE_READY);
+                }
+                else if (_TRIP_CONTROL_DISC == prefix->control)
+                {
+                    if (_tripc_parse_disconnect(c))
+                    {
+                        return EINVAL;
+                    }
+                }
+                else
+                {
+                    return EINVAL;
+                }
             }
             break;
         case _TRIPC_STATE_END:
             {
+                return EINVAL;
             }
             break;
         case _TRIPC_STATE_ERROR:
@@ -547,10 +658,12 @@ _tripc_read(_trip_connection_t *c, unsigned char control, size_t len, const unsi
             break;
         default:
             {
-                c->error = EINVAL;
+                _tripc_set_error(c, EINVAL, "Invalid state.");
             }
             break;
     }
+
+    _tripc_flag_seq(c, prefix->seq);
 
     return c->error;
 }
@@ -672,6 +785,20 @@ _tripc_destroy(_trip_connection_t *c)
 
     tripm_cfree(c->errmsg);
     c->errmsg = NULL;
+}
+
+int
+_tripc_check_seq(_trip_connection_t *c, uint64_t seq)
+{
+    c = c; seq = seq;
+    return 0;
+}
+
+void
+_tripc_flag_seq(_trip_connection_t *c, uint64_t seq)
+{
+    c = c; seq = seq;
+    // TODO
 }
 
 /**

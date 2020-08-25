@@ -39,6 +39,7 @@ enum _trip_control
     _TRIP_CONTROL_DATA,
     _TRIP_CONTROL_OPEN,
     _TRIP_CONTROL_PING,
+    _TRIP_CONTROL_DISC,
     _TRIP_CONTROL_MAX,
 };
 
@@ -50,13 +51,6 @@ struct _trip_prefix_s
     uint64_t id;
     uint32_t seq;
     bool encrypted;
-};
-
-struct _trip_route_s
-{
-    uint16_t version;
-    uint64_t len;
-    void *route;
 };
 
 

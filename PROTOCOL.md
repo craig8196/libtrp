@@ -46,6 +46,12 @@ Variable length integers are denoted as "V" in the octets column.
 Variable length fields the length is listed first followed by data, denoted "VD".
 Note that the allowed length of a field may depend on implementation.
 Note that the allowed length may be limited by packet size.
+WARNING: Current implementation is the first octet denotes number of following octets.
+TODO: Switch to different scheme or keep. I'm leaning to keeping current method.
+Note that the current method is big endian so you can easily mask and bitshift.
+
+
+I don't know if I like this encoding scheme anymore.
 Use variable integral type encoding which are little endian.
 See https://developers.google.com/protocol-buffers/docs/encoding
 
@@ -349,8 +355,7 @@ SECURITY: The signature of the CHALLENGE segment MUST be done for public servers
 | Octets | Field |
 |:------ |:----- |
 | 48 | Encrypt Padding
-| 4 | Receiver ID for future responses/requests
-| 8 | Timestamp
+| 8 | Receiver ID for future responses/requests
 | 24 | Nonce client (Zeroes if unencrypted)
 | 32 | Public key client (Zeroes if unencrypted)
 | 4 | Sender Max Credit
@@ -361,6 +366,7 @@ SECURITY: The signature of the CHALLENGE segment MUST be done for public servers
 
 TODO should this be a part of it???
 | 1 | Allowed stream types, cannot be zero.
+| 8 | Timestamp
 
 
 ### Forward
