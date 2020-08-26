@@ -713,6 +713,21 @@ _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
         _trip_connection_t *c = connmap_get(&r->conn, prefix.id);
         if (c)
         {
+            // TODO unsign CHALLENGE PACKETS
+            if (c->peer.signpk || !(r->flag & _TRIPR_FLAG_ALLOW_PLAIN_OSIG))
+            {
+                if (trip_unsign(len, buf, c->peer.signpk))
+                {
+                    _trip_router_reject(r, src, 203);
+                    return;
+                }
+            }
+            else
+            {
+                // TODO verify that signature is zeros
+            }
+            len -= crypto_sign_BYTES;
+
             if (_tripc_read(c, &prefix, len - end, buf + end))
             {
                 _trip_router_reject(r, src, 79);

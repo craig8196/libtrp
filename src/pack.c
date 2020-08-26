@@ -621,7 +621,7 @@ trip_unpack(size_t blen, unsigned char *buf, const char *format, ...)
 	uint64_t *Q;
 
     /* Decryption */
-    //unsigned char *key;
+    unsigned char *key;
 
     /* Buffers */
     unsigned char *raw;
@@ -643,7 +643,8 @@ trip_unpack(size_t blen, unsigned char *buf, const char *format, ...)
                     len = NPOS;
                     goto _trip_unpack_end;
                 }
-                //key = va_arg(ap, unsigned char *);
+                key = va_arg(ap, unsigned char *);
+                key = key;
                 buf += crypto_box_SEALBYTES;
                 break;
 

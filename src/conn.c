@@ -508,7 +508,66 @@ _tripc_parse_open(_trip_connection_t *c, size_t len, const unsigned char *buf)
 int
 _tripc_parse_chal(_trip_connection_t *c, size_t len, const unsigned char *buf)
 {
-    return _tripc_parse_open(c, len, buf);
+    const char FMT[] = "oQnkIIIIO";
+
+    // TODO extract!
+    uint64_t id;
+    unsigned char nonce[_TRIP_NONCE];
+    unsigned char key[TRIP_KEY_PUB];
+    unsigned char *n = nonce;
+    unsigned char *k = key;
+    uint32_t maxcredits;
+    uint32_t maxstreams;
+    uint32_t maxmessagesize;
+    uint32_t maxmessages;
+#if DEBUG_CONNECTION
+    printf("%s: ID PTR (%p)\n", __func__, (void *)&id);
+#endif
+
+    // TODO inject OPEN
+    size_t olen = trip_unpack(len, buf, FMT,
+        c->self.sk,
+        &id,
+        n,
+        k,
+        &maxcredits,
+        &maxstreams,
+        &maxmessagesize,
+        &maxmessages);
+#if DEBUG_CONNECTION
+    printf("CHAL parse: len(%lu) == blen(%lu) id(%lx)\n", olen, len, id);
+    trip_dump(len, buf);
+    printf("\n");
+#endif
+
+    if (olen != len)
+    {
+        return EINVAL;
+    }
+#if DEBUG_CONNECTION
+    printf("%s: PASSED CHAL PARSED id(%lx):\n", __func__, id);
+#endif
+
+    c->peer.id = id;
+    c->peer.lim.credit = maxcredits;
+    c->peer.lim.stream = maxstreams;
+    c->peer.lim.message_size = maxmessagesize;
+    c->peer.lim.message = maxmessages;
+
+    if (are_zeros(_TRIP_NONCE, nonce) || are_zeros(TRIP_KEY_PUB, key))
+    {
+        // TODO ALLOW UNDER PLAIN CONNECTIONS
+        return 0; // TODO don't allow in future?
+    }
+    else
+    {
+        c->peer.nonce = tripm_alloc(_TRIP_NONCE);
+        c->peer.pk = tripm_alloc(TRIP_KEY_PUB);
+        memcpy(c->peer.nonce, nonce, _TRIP_NONCE);
+        memcpy(c->peer.pk, key, TRIP_KEY_PUB);
+    }
+
+    return 0;
 }
 
 int
