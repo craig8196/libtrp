@@ -37,7 +37,8 @@
  *   n: Nonce.
  *   k: Public key (box/seal).
  *
- *   b: Binary string (size_t, void *).
+ *   b: Binary string (uint32_t, void *).
+ *      Binary string unpack (uint32_t *, void **).
  *   c: Signed octet.
  *   C: Unsigned octet.
  *   h: Signed 16-bit int.

@@ -18,10 +18,10 @@ connmap_max_conn(void)
     return (uint64_t)1 << 31;
 }
 
-static uintptr_t
+static size_t
 connmap_index_at(connmap_t *map, connmap_entry_t *e)
 {
-    return (uintptr_t)(e - map->map);
+    return (size_t)(e - map->map);
 }
 
 static size_t
@@ -62,18 +62,15 @@ connmap_max(connmap_t *map)
 static uint64_t
 connmap_random()
 {
-    uint64_t r = 0;
-    uint32_t *p = (uint32_t *)&r;
-    p[0] = randombytes_random();
-    p[1] = randombytes_random();
+    uint64_t r = randombytes_random();
+    r <<= 32;
+    r ^= randombytes_random();
     return r;
 }
 
-#include <stdio.h>
 void
 connmap_init(connmap_t *map, uint64_t max)
 {
-    printf("%s: init\n", __func__);
     if (!max)
     {
         max = 1;
@@ -144,7 +141,6 @@ connmap_add(connmap_t *map, _trip_connection_t *conn)
             /* Check if map exists. */
             if (map->map)
             {
-                printf("%s: re-alloc\n", __func__);
                 void *m = tripm_realloc(map->map, sizeof(connmap_entry_t) * (map->cap * 2));
                 
                 if (!m)
@@ -165,7 +161,6 @@ connmap_add(connmap_t *map, _trip_connection_t *conn)
             }
             else
             {
-                printf("%s: alloc\n", __func__);
                 void *m = tripm_alloc(sizeof(connmap_entry_t));
 
                 if (!m)
@@ -183,7 +178,7 @@ connmap_add(connmap_t *map, _trip_connection_t *conn)
         /* There are free slots. */
         connmap_entry_t *e = connmap_pop(map);
         /* Create ID. */
-        uint64_t index = e - map->map;
+        uint64_t index = connmap_index_at(map, e);
         uint64_t r = connmap_random();
         uint64_t id = index ^ (r & ~map->mask);
         conn->self.id = id;
@@ -200,6 +195,7 @@ _trip_connection_t *
 connmap_del(connmap_t *map, uint64_t id)
 {
     size_t index = connmap_index(map, id);
+
     if (index < map->cap)
     {
         connmap_entry_t *e = &map->map[index];
@@ -225,10 +221,11 @@ _trip_connection_t *
 connmap_get(connmap_t *map, uint64_t id)
 {
     size_t index = connmap_index(map, id);
+
     if (LIKELY(index < map->cap))
     {
         connmap_entry_t *e = &map->map[index];
-        if (e->isfull && LIKELY(id == e->u.c->self.id))
+        if (LIKELY(e->isfull && id == e->u.c->self.id))
         {
             return e->u.c;
         }

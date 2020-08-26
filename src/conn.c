@@ -361,7 +361,7 @@ _tripc_send_open(_trip_connection_t *c, size_t blen, void *buf)
         _tripc_seq(c),
 
         (uint16_t)TRIP_VERSION_MAJOR,
-        (size_t)0,
+        (uint32_t)0,
         (unsigned char *)NULL,
 
         c->peer.openpk,
@@ -393,11 +393,11 @@ _tripc_send_chal(_trip_connection_t *c, size_t blen, void *buf)
     uint8_t eflag = c->peer.pk ? _TRIP_PREFIX_EMASK : 0;
 
     size_t len = trip_pack(blen, buf, FMT,
-        (uint8_t)(_TRIP_CONTROL_OPEN | eflag),
+        (uint8_t)(_TRIP_CONTROL_CHAL | eflag),
         c->peer.id,
         _tripc_seq(c),
 
-        c->peer.pk,
+        c->peer.openpk,
 
         c->self.id,
         c->self.nonce,
@@ -410,7 +410,7 @@ _tripc_send_chal(_trip_connection_t *c, size_t blen, void *buf)
         c->self.signsk
         );
 #if DEBUG_CONNECTION
-    printf("OPEN:\n");
+    printf("CHAL %lx:\n", c->peer.id);
     trip_dump(len, buf);
     printf("\n");
 #endif
@@ -448,27 +448,40 @@ _tripc_parse_open(_trip_connection_t *c, size_t len, const unsigned char *buf)
     uint64_t id;
     unsigned char nonce[_TRIP_NONCE];
     unsigned char key[TRIP_KEY_PUB];
+    unsigned char *n = nonce;
+    unsigned char *k = key;
     uint32_t maxcredits;
     uint32_t maxstreams;
     uint32_t maxmessagesize;
     uint32_t maxmessages;
+#if DEBUG_CONNECTION
+    printf("%s: ID PTR (%p)\n", __func__, (void *)&id);
+#endif
 
     // TODO inject OPEN
     size_t olen = trip_unpack(len, buf, FMT,
         // TODO the length of the signature is an issue
         // we need to know how long the decrypt buf is prior to decryption
         &id,
-        nonce,
-        key,
+        n,
+        k,
         &maxcredits,
         &maxstreams,
         &maxmessagesize,
         &maxmessages);
+#if DEBUG_CONNECTION
+    printf("OPEN parse: len(%lu) == blen(%lu) id(%lx)\n", olen, len, id);
+    trip_dump(len, buf);
+    printf("\n");
+#endif
 
     if (olen != len)
     {
         return EINVAL;
     }
+#if DEBUG_CONNECTION
+    printf("%s: PASSED OPEN PARSED id(%lx):\n", __func__, id);
+#endif
 
     c->peer.id = id;
     c->peer.lim.credit = maxcredits;
@@ -478,7 +491,8 @@ _tripc_parse_open(_trip_connection_t *c, size_t len, const unsigned char *buf)
 
     if (are_zeros(_TRIP_NONCE, nonce) || are_zeros(TRIP_KEY_PUB, key))
     {
-        return EINVAL;
+        // TODO ALLOW UNDER PLAIN CONNECTIONS
+        return 0; // TODO don't allow in future?
     }
     else
     {
@@ -521,6 +535,10 @@ _tripc_parse_disconnect(_trip_connection_t *c)
 int
 _tripc_read(_trip_connection_t *c, _trip_prefix_t *prefix, size_t len, const unsigned char *buf)
 {
+#if DEBUG_CONNECTION
+    printf("%s: control(%u) id(%lu) sequence(%lu)\n", __func__, prefix->control, prefix->id, prefix->seq);
+#endif
+
     if (_tripc_check_seq(c, prefix->seq))
     {
         return EINVAL;
@@ -697,7 +715,7 @@ _tripc_send(_trip_connection_t *c, size_t len, void *buf)
                 if (c->hassend)
                 {
                     size_t wlen = _tripc_send_open(c, len, buf);
-                    printf("len pack: %lu\n", wlen);
+                    printf("OPEN len pack: %lu\n", wlen);
                     c->hassend = false;
                     return wlen;
                 }
@@ -710,7 +728,18 @@ _tripc_send(_trip_connection_t *c, size_t len, void *buf)
             break;
         case _TRIPC_STATE_CHAL:
             {
-                return _tripc_send_chal(c, len, buf);
+                if (c->hassend)
+                {
+                    size_t wlen = _tripc_send_chal(c, len, buf);
+                    printf("CHAL len pack: %lu\n", wlen);
+                    c->hassend = false;
+                    return wlen;
+                }
+                else
+                {
+                    /* The timeout is set so we don't need to send again yet. */
+                    return 0;
+                }
             }
             break;
         case _TRIPC_STATE_PING:
@@ -932,10 +961,12 @@ _tripc_set_state(_trip_connection_t *c, enum _tripc_state state)
         case _TRIPC_STATE_CHAL:
             {
                 _tripc_mk_keys(c);
+                // TODO set deadline to abandon connection
+#if 0
                 _tripc_set_deadline(c, c->maxstatems);
                 _tripc_set_growth(c, c->statems);
                 _tripc_set_timeout(c, _tripc_get_growth(c), _tripc_timeout_state_resend_cb);
-                _tripc_set_send(c);
+#endif
             }
             break;
         case _TRIPC_STATE_PING:

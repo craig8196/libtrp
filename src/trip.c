@@ -514,6 +514,9 @@ _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
         _trip_router_reject(r, src, 1);
         return;
     }
+#if DEBUG_ROUTER
+    printf("%s: PASSED PREFIX len(%lu) id(%lx)\n", __func__, end, prefix.id);
+#endif
 
     /* Extract encrypted flag. */
     prefix.encrypted = prefix.control & _TRIP_PREFIX_EMASK;
@@ -552,7 +555,7 @@ _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
         /* Unpack version and routing information. */
         trip_screen_t screen;
         _trip_screen_init(&screen);
-        size_t endroute = trip_unpack(len - end, buf + end, "HVp",
+        size_t endroute = trip_unpack(len - end, buf + end, "Hb",
                                       &screen.version,
                                       &screen.routelen,
                                       &screen.route);
@@ -601,6 +604,18 @@ _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
             // TODO user validation
             // TODO open validation
             // TODO signature validation
+            if (screen.signpk || !(r->flag & _TRIPR_FLAG_ALLOW_PLAIN_ISIG))
+            {
+                if (trip_unsign(len, buf, screen.signpk))
+                {
+                    _trip_router_reject(r, src, 203);
+                    return;
+                }
+            }
+            else
+            {
+                // TODO verify that signature is zeros
+            }
 
             c = _trip_new_connection(r);
             if (!c)
@@ -609,7 +624,7 @@ _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
                 return;
             }
 
-            _tripc_init(c, r, false);
+            _tripc_init(c, r, true);
             c->src = src;
             if (connmap_add(&r->conn, c))
             {
@@ -622,11 +637,22 @@ _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
             }
 
             _tripc_set_screen(c, &screen);
-
             _tripc_start(c);
         }
         else
         {
+            if (c->peer.signpk || !(r->flag & _TRIPR_FLAG_ALLOW_PLAIN_ISIG))
+            {
+                if (trip_unsign(len, buf, c->peer.signpk))
+                {
+                    _trip_router_reject(r, src, 203);
+                    return;
+                }
+            }
+            else
+            {
+                // TODO verify that signature is zeros
+            }
             // TODO should I be notifying the packet manager of unused src? yes.
             /* Update the source. */
             c->src = src;
@@ -635,44 +661,27 @@ _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
             /* Set send so challenge is resent. */
             // TODO need to recheck/recalc signature...
             // TODO need to recheck parameters
-            _tripc_set_send(c);
             return;
         }
 
-#if 0
-        /* Discard if this sequence has been seen. */
-        int seen = _tripc_check_open_seq(c, prefix.seq);
-        if (seen)
-        {
-            _trip_router_reject(r, src, 20);
-            return;
-        }
-#endif
-
-        // TODO verify signature here
-        if (c->peer.signpk || !(r->flag & _TRIPR_FLAG_ALLOW_PLAIN_ISIG))
-        {
-            if (trip_unsign(len, buf, c->peer.signpk))
-            {
-                _trip_router_reject(r, src, 203);
-                return;
-            }
-        }
-        else
-        {
-            // TODO verify that signature is zeros
-        }
+        len -= crypto_sign_BYTES;
 
         /* Decrypt OPEN buffer. */
         unsigned char *opensk = c->self.opensk ? c->self.opensk : r->opensk;
         size_t maclen = trip_unpack(len - end - _TRIP_SIGN, buf + end, "oO", opensk);
 
-        if (0 == maclen || NPOS == maclen || (maclen + end) != len)
+
+        // TODO what is the check here...?
+        if (0 == maclen || NPOS == maclen)
         {
             /* Didn't process entire buffer. */
             _trip_router_reject(r, src, 201);
             return;
         }
+
+#if DEBUG_ROUTER
+        printf("%s: PASSED DECRYPT\n", __func__);
+#endif
 
         end += maclen;
 
@@ -685,6 +694,12 @@ _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
             _trip_router_reject(r, src, 22);
             return;
         }
+
+#if DEBUG_ROUTER
+        printf("%s: PASSED READ\n", __func__);
+#endif
+
+        _tripc_set_send(c);
     }
     else
     {
@@ -1549,7 +1564,7 @@ _trip_reject_connection(_trip_router_t *r, void *data, size_t ilen,
                         unsigned char *info, int err)
 {
     _trip_connection_t c;
-    _tripc_init(&c, r, true);
+    _tripc_init(&c, r, false);
     c.data = data;
     c.ilen = ilen;
     c.info = info;
