@@ -31,12 +31,16 @@ extern "C" {
 #endif
 
 
+#include <stdbool.h>
+
+
 typedef struct ping_s
 {
-    unsigned char *nonce;
+    unsigned char *nonce; /* If null, then normal nonce should be used. */
     uint64_t timestamp;
     int maxms;
     int ms;
+    bool isactive;
 } ping_t;
 
 

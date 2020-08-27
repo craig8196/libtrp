@@ -62,7 +62,7 @@ _tripc_state_str(int s)
         "_TRIPC_STATE_CHAL",
         "_TRIPC_STATE_PING",
         "_TRIPC_STATE_READY",
-        "_TRIPC_STATE_READY_PING",
+        "_TRIPC_STATE_READY_PING", // TODO vestigial state, get rid of!
         "_TRIPC_STATE_CLOSE",
         "_TRIPC_STATE_END",
         "_TRIPC_STATE_ERROR",
@@ -181,6 +181,10 @@ _tripc_generate_ping(_trip_connection_t *c)
     if (!c->ping.nonce)
     {
         c->ping.nonce = tripm_alloc(_TRIP_NONCE);
+        if (!c->ping.nonce)
+        {
+            return;
+        }
     }
 
     _trip_nonce_init(c->ping.nonce);
@@ -418,21 +422,61 @@ _tripc_send_chal(_trip_connection_t *c, size_t blen, void *buf)
     return len;
 }
 
+unsigned char *
+_tripc_prep_nonce(unsigned char *out, unsigned char *nonce, uint8_t control, uint64_t seq)
+{
+    memcpy(out, nonce, _TRIP_NONCE);
+    out[0] += control;
+    out[1] += (seq >> 0) & 0xFF;
+    out[2] += (seq >> 8) & 0xFF;
+    out[3] += (seq >> 16) & 0xFF;
+    out[4] += (seq >> 24) & 0xFF;
+    out[5] += (seq >> 32) & 0xFF;
+    out[6] += (seq >> 40) & 0xFF;
+    out[7] += (seq >> 48) & 0xFF;
+    out[8] += (seq >> 56) & 0xFF;
+
+    return NULL;
+}
+
 size_t
 _tripc_send_ping(_trip_connection_t *c, size_t blen, void *buf)
 {
-    return trip_pack(blen, buf, "CQWenQIIIE",
-        (uint8_t)_TRIP_CONTROL_PING,
-        c->peer.id,
-        _tripc_seq(c),
+    static const char FMT[] =   "CQWenQIIIE";
 
-        c->ping.nonce,
-        c->ping.timestamp,
-        c->self.stat.rtt,
-        c->self.stat.sent,
-        c->self.stat.recv,
-        c->peer.pk
-        );
+    if (c->hassend && c->ping.isactive)
+    {
+#if DEBUG_CONNECTION
+        printf("%s\n", __func__);
+#endif
+        unsigned char nonce[_TRIP_NONCE];
+        uint8_t eflag = c->peer.pk ? _TRIP_PREFIX_EMASK : 0;
+        uint64_t seq =_tripc_seq(c);
+
+        c->hassend = false;
+        size_t wlen = trip_pack(blen, buf, FMT, 
+            (uint8_t)(_TRIP_CONTROL_PING | eflag),
+            c->peer.id,
+            seq,
+
+            _tripc_prep_nonce(c->self.nonce, nonce, seq, _TRIP_CONTROL_PING),
+            c->peer.pk,
+
+            c->ping.nonce,
+            c->ping.timestamp,
+            c->self.stat.rtt,
+            c->self.stat.sent,
+            c->self.stat.recv,
+
+            c->peer.pk
+            );
+        return wlen;
+    }
+    else
+    {
+        /* The timeout is set so we don't need to send again yet. */
+        return 0;
+    }
 }
 
 /**
@@ -577,11 +621,49 @@ _tripc_parse_data(_trip_connection_t *c)
     return EINVAL;
 }
 
+// TODO make sure to check that we aren't being ping spammed.
 int
-_tripc_parse_ping(_trip_connection_t *c)
+_tripc_parse_ping(_trip_connection_t *c, size_t len, const unsigned char *buf, _trip_prefix_t *prefix)
 {
-    c = c;
-    return EINVAL;
+    static const char FMT[] =   "enQIIIE";
+
+    if (c->hassend && (c->ping.isactive || c->incoming))
+    {
+#if DEBUG_CONNECTION
+        printf("%s\n", __func__);
+#endif
+        unsigned char nonce[_TRIP_NONCE];
+        unsigned char rnonce[_TRIP_NONCE];
+        uint64_t time;
+        uint32_t rtt;
+        uint32_t sent;
+        uint32_t recv;
+
+        c->hassend = false;
+        size_t plen = trip_unpack(len, buf, FMT, 
+            _tripc_prep_nonce(c->peer.nonce, nonce, prefix->seq, prefix->control),
+            c->peer.pk,
+
+            rnonce,
+            &time,
+            &rtt,
+            &sent,
+            &recv
+            );
+
+        if (plen != len)
+        {
+            return EINVAL;
+        }
+        // TODO do something with ping information
+    }
+    else
+    {
+        return EINVAL;
+    }
+
+
+    return 0;
 }
 
 int
@@ -645,12 +727,13 @@ _tripc_read(_trip_connection_t *c, _trip_prefix_t *prefix, size_t len, const uns
                 }
                 else if (_TRIP_CONTROL_PING == prefix->control)
                 {
-                    if (_tripc_parse_ping(c))
+                    if (_tripc_parse_ping(c, len, buf, prefix))
                     {
                         return EINVAL;
                     }
 
-                    _tripc_set_state(c, _TRIPC_STATE_READY_PING);
+                    /* Make sure we PONG. */
+                    _tripc_set_send(c);
                 }
                 else
                 {
@@ -671,7 +754,7 @@ _tripc_read(_trip_connection_t *c, _trip_prefix_t *prefix, size_t len, const uns
                 }
                 else if (_TRIP_CONTROL_PING == prefix->control)
                 {
-                    if (_tripc_parse_ping(c))
+                    if (_tripc_parse_ping(c, len, buf, prefix))
                     {
                         return EINVAL;
                     }
@@ -704,7 +787,7 @@ _tripc_read(_trip_connection_t *c, _trip_prefix_t *prefix, size_t len, const uns
                 }
                 else if (_TRIP_CONTROL_PING == prefix->control)
                 {
-                    if (_tripc_parse_ping(c))
+                    if (_tripc_parse_ping(c, len, buf, prefix))
                     {
                         return EINVAL;
                     }
@@ -759,14 +842,16 @@ _tripc_send(_trip_connection_t *c, size_t len, void *buf)
     {
         case _TRIPC_STATE_START:
             {
-                // TODO does this trigger an error and kill the connection?
+                _tripc_set_error(c, EINVAL, "Should not be sending in START.");
                 return NPOS;
             }
             break;
         case _TRIPC_STATE_RESOLVE:
             {
-                // TODO does this trigger an error and kill the connection?
-                return NPOS;
+                /* Some connections might need to be re-resolved.
+                 * Return zero as we cannot send until resolved.
+                 */
+                return 0;
             }
             break;
         case _TRIPC_STATE_OPEN:
@@ -803,7 +888,12 @@ _tripc_send(_trip_connection_t *c, size_t len, void *buf)
             break;
         case _TRIPC_STATE_PING:
             {
-                // TODO only if we had a timeout do we send ping
+                /* The sending (OPEN) connection is responsible for
+                 * sending PING.
+                 * The receiving connection may optionally PING
+                 * after a timeout of expecting the PING.
+                 * The ping is sent once and we move back to READY.
+                 */
                 return _tripc_send_ping(c, len, buf);
             }
             break;
@@ -814,7 +904,10 @@ _tripc_send(_trip_connection_t *c, size_t len, void *buf)
             break;
         case _TRIPC_STATE_READY_PING:
             {
-                // TODO is this a vestigial state?
+                /* This state is so we can send a reactive ping before
+                 * switching back to the READY state.
+                 */
+                return _tripc_send_ping(c, len, buf);
             }
             break;
         case _TRIPC_STATE_END:
@@ -829,12 +922,11 @@ _tripc_send(_trip_connection_t *c, size_t len, void *buf)
             break;
         default:
             {
-                c->error = EINVAL;
+                _tripc_set_error(c, EINVAL, "Unknown state in send.");
+                return NPOS;
             }
             break;
     }
-
-    return c->error;
 }
 
 /**
@@ -866,13 +958,10 @@ _tripc_destroy(_trip_connection_t *c)
         c->statetimer = NULL;
     }
 
-    if (c->insend)
-    {
-        _trip_unqconnection(c->router, c);
-    }
+    _trip_unqconnection(c->router, c);
 
-    tripm_cfree(c->errmsg);
-    c->errmsg = NULL;
+    c->errmsg = tripm_cfree(c->errmsg);
+    c->ping.nonce = tripm_cfree(c->ping.nonce);
 }
 
 int

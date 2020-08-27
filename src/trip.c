@@ -305,7 +305,11 @@ _trip_listen(_trip_router_t *r, trip_socket_t fd, int events)
             }
         }
 
-        /* Rate limit number of send. */
+        /* Rate limit number of sent packets.
+         * Each connection gets to send a certain amount of
+         * sequential packets.
+         * After blocking the connection is requeued.
+         */
         _trip_connection_t *c = sendq_dq(&r->sendq);
         while (c)
         {
@@ -323,6 +327,7 @@ _trip_listen(_trip_router_t *r, trip_socket_t fd, int events)
                 {
                     /* We made an error. */
                     r->sendlen = 0;
+                    // TODO I don't think this is a shutdown error...
                     _trip_set_error(r, ECOMM, NULL);
                     return;
                 }
@@ -714,7 +719,9 @@ _trip_segment(_trip_router_t *r, int src, size_t len, unsigned char *buf)
         if (c)
         {
             // TODO unsign CHALLENGE PACKETS
-            if (c->peer.signpk || !(r->flag & _TRIPR_FLAG_ALLOW_PLAIN_OSIG))
+            if (_TRIP_CONTROL_CHAL == prefix.control
+                && (c->peer.signpk
+                    || !(r->flag & _TRIPR_FLAG_ALLOW_PLAIN_OSIG)))
             {
                 if (trip_unsign(len, buf, c->peer.signpk))
                 {
