@@ -36,7 +36,7 @@ extern "C" {
 
 typedef struct ping_s
 {
-    unsigned char *nonce; /* If null, then normal nonce should be used. */
+    unsigned char nonce[_TRIP_NONCE];
     uint64_t timestamp;
     int maxms;
     int ms;

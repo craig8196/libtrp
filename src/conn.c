@@ -178,15 +178,6 @@ _tripc_mk_keys(_trip_connection_t *c)
 void
 _tripc_generate_ping(_trip_connection_t *c)
 {
-    if (!c->ping.nonce)
-    {
-        c->ping.nonce = tripm_alloc(_TRIP_NONCE);
-        if (!c->ping.nonce)
-        {
-            return;
-        }
-    }
-
     _trip_nonce_init(c->ping.nonce);
     c->ping.timestamp = triptime_now();
 }
@@ -961,7 +952,6 @@ _tripc_destroy(_trip_connection_t *c)
     _trip_unqconnection(c->router, c);
 
     c->errmsg = tripm_cfree(c->errmsg);
-    c->ping.nonce = tripm_cfree(c->ping.nonce);
 }
 
 int
